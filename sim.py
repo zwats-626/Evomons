@@ -23,23 +23,49 @@ class ELEMENTS(Enum):
 class TRAITS(Enum):
     HERBAVOR = "herbavor"
     CARNIVOR = "carnivor"
-    OMNIVOR = "omnivor"
 
+
+class BASIC_INPUTS(Enum):
+    SELF_HP = "SELF HP"
+    SELF_ENERGY = "SELF ENERGY"
+    SELF_ATTACK = "SELF ATTACK"
+    SELF_SA = "SELF SA"
+    SELF_DEFENSE = "SELF DEFENCE"
+    SELF_SD = "SELF SD"
+    SELF_SPEED = "SELF SPEED"
+    SELF_LEVEL = "SELF LEVEL"
+    
+
+class ENCOUNTER_INPUTS(Enum):
+    OTHER_HP = "OTHER HP"
+    OTHER_ENERHY = "OTHER ENERGY"
+    OTHER_ATTACK = "OTHER ATTACK"
+    OTHER_SA = "OTHER SA"
+    OTHER_DEFENSE = "OTHER DEFENCE"
+    OTHER_SD = "OTHER SD"
+    OTHER_SPEED = "OTHER SPEED"
+    OTHER_LEVEL = "OTHER LEVEL"
+    
 
 class BASIC_MOVES(Enum):
     REST = "rest"
     SEARCH_PLANT = "search plant"
     SEARCH_ANIMAL = "search animal"
     SEARCH_MATE = "search mate"
-    
+
+
 class ENCOUNTER_MOVES(Enum):
     SPECIAL_ATTACK = "special attack"
     ATTACK = "attack"
     RUN = "run"
 
 class Neuron():
-    def __init__(self, bias, threshold, activation_function, dendrites, axons):
-        pass
+    def __init__(self, input_value, threshold, output, axons):
+        self.input_value = input_value
+        self.threshold = threshold
+        self.output = output
+        self.axons = axons
+
 
 class Neural_Network():
     def __init__(self, inputs, hiddens, outputs):
@@ -68,6 +94,10 @@ all_stats = [stat for stat in STATS]
 all_elements = [el for el in ELEMENTS]
 all_encounter_moves = [m for m in ENCOUNTER_MOVES]
 all_basic_moves = [m for m in BASIC_MOVES]
+all_encounter_inputs = [el for el in ENCOUNTER_INPUTS]
+all_basic_inputs = [el for el in BASIC_INPUTS]
+all_traits = [t for t in TRAITS]
+
 
 def random_mon():
 
@@ -80,20 +110,26 @@ def random_mon():
 
     ran_element = all_elements[random.randrange(0, len(all_elements))]
 
-    temp_traits = []
-    temp_skills = []
+    rand_traits = []
+    for i in range(random.randrange(1, len(all_traits) + 1)):
 
-    rand_encounter_m = rand_elements(all_encounter_moves)
+        trait = all_traits[random.randrange(0, len(all_traits))]
+        if trait not in rand_traits:
+            rand_traits.append(trait)
 
-    ran_basic_moves = rand_elements(all_basic_moves)
+    rand_encounter_m = rand_dict(all_encounter_moves)
+
+    ran_basic_moves = rand_dict(all_basic_moves)
+
+    # maybe brain could just be ann array of values that 
 
 
 
 
     temp_brain = []
-    return Mon(ran_stats, level, ran_element, temp_traits, rand_encounter_m, ran_basic_moves, temp_brain)
+    return Mon(ran_stats, level, ran_element, rand_traits, rand_encounter_m, ran_basic_moves, temp_brain)
     
-def rand_elements(all):
+def rand_dict(all):
     key = []
     value = []
     for i in range(random.randrange(1, len(all))):
@@ -115,8 +151,11 @@ def main():
     print(mon.element)
     print(mon.encounter_moves)
     print(mon.basic_moves)
+    print(mon.traits)
 
 main()
+
+
 
 
 # stats are the basic numbers while traits give bonuses to certain skills ie walking vs swimming
