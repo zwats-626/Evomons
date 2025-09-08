@@ -3,6 +3,9 @@ import random
 from enum import Enum
 
 
+
+################Classes##############
+
 class STATS(Enum):
     HP = "HP"
     A = "A"
@@ -62,6 +65,9 @@ class ENCOUNTER_INPUTS(Enum):
     OTHER_DEFENSEB = "OTHER DEFENCE BUFF"
     OTHER_SDB = "OTHER SD BUFF"
     OTHER_SPEEDB = "OTHER SPEED BUFF"
+    OTHER_ANIMAL = "OTHER IS ANIMAL"
+    OTHER_PLANT = "OTHER IS PLANT"
+    OTHER_REMAINS = "OTHER REMAINS"
     
 class BASIC_MOVES(Enum):
     REST = "Rest"
@@ -99,17 +105,21 @@ class Neural_Network():
         self.hiddens = hiddens
     
 class Mon():
-    def __init__(self, stats, buffs, max_level, traits, encounter_moves, basic_moves, brain):
+    def __init__(self, stats, buffs, max_level, max_age, traits, encounter_moves, basic_moves, brain):
         self.stats = stats
         self.buffs = buffs
         self.max_level = max_level
         self.level = 1
+        self.max_age = max_age
+        self.age = 0
         self.traits = traits
         self.encounter_moves = encounter_moves
         self.basic_moves = basic_moves
         self.brain = brain
         self.energy = 0
         self.exp = 0
+        self.child = None
+        self.turns_carried = 0
 
 class Plant():
     def __init__(self, stats, traits, buffs):
@@ -117,18 +127,12 @@ class Plant():
         self.traits = traits
         self.buffs = buffs
 
-
 class Remains():
     def __init__(self, stats, traits, buffs):
         self.stats = stats
         self.traits = traits
         self.buffs = buffs
         self.stats[STATS.CON] = 0
-class Environment():
-    def __init__(self, temp, humidity, vegitation):
-        self.temp = temp
-        self.humidity = humidity
-        self.vegitation = vegitation
 
 all_stats = [stat for stat in STATS]
 all_elements = [el for el in ELEMENTS]
@@ -139,13 +143,162 @@ all_basic_inputs = [el for el in BASIC_INPUTS]
 all_traits = [t for t in TRAITS]
 all_funcions = [func for func in NEURON_FUNCTIONS]
 
-
 TOTAL_SPACE = 10000
 SPACE_TAKEN = 0
 
 ALL_PLANTS = []
 ALL_MONS = []
 ALL_REMAINS = []
+
+
+######Main####
+
+def main():
+    #are there animals in ecosystem?
+
+    #if no generate batch of random mons
+
+    #run simulation
+    global ALL_PLANTS
+    global SPACE_TAKEN
+    global ALL_MONS
+    global ALL_REMAINS
+
+    
+    ALL_PLANTS = [random_plant() for i in range(5)]
+    total_turns = 0
+    while True:
+        if total_turns == 0:
+            copies = []
+            ALL_MONS = [random_mon() for i in range(20)]
+            for mon in ALL_MONS:
+                for j in range(9):
+                    copies.append(copy.deepcopy(mon))
+            ALL_MONS = ALL_MONS + copies
+                # print(f"All Mons :{ALL_MONS} after repopulation")
+            # print(f"All Mons :{ALL_MONS} before user input")
+        
+        # if total_turns > 500:
+        try:
+            turns = input(f"turns ({total_turns}): ")
+            if turns == "q":
+                break
+        except:
+            print("put in a int")
+        
+        for i in range(int(turns)):
+            total_turns += 1
+
+
+            print(f"__TURN: {total_turns}__")
+            j = 0
+            print(f"Space taken = {SPACE_TAKEN}")
+            for plant in ALL_PLANTS:
+                plant = plant_turn(plant)
+                if isinstance(plant, Plant):
+                    # print()
+                    j += 1
+                    print(f"__plant: {j}__")
+                    print_plant(plant)
+                    print()
+
+            for remains in ALL_REMAINS:
+                remains.buffs[STATS.HP] += 1
+                if remains.stats[STATS.HP] <= remains.buffs[STATS.HP]:
+                    remains = None
+                else:
+                    print(f"HP {remains.stats[STATS.HP]}({remains.stats[STATS.HP] - remains.buffs[STATS.HP]})")
+            k = 0
+
+            for mon in ALL_MONS:
+                mon_idx = ALL_MONS.index(mon)
+                k += 1
+                if isinstance(mon, Mon):
+                
+                    print()
+                    print(f"__mon: {k}__")
+                    print_mon(mon)
+                    move =  process_network(mon.brain['basic'], mon, None)
+                    print(f"Mon chose to {move.value}")
+                    other = make_move(move, mon, None)
+                    mon.age += 1
+                    ALL_MONS[mon_idx] = mon
+                if other != None and mon != None:
+                    
+                    oth_idx = 0
+                    l = []
+                    f = ""  
+                    if isinstance(other, Plant):
+                        oth_idx = ALL_PLANTS.index(other)
+                        l = ALL_PLANTS
+                    elif isinstance(other, Mon):
+                        oth_idx = ALL_MONS.index(other)
+                        l = ALL_MONS
+                    elif isinstance(other, Remains):
+                        if other in ALL_REMAINS:
+                            oth_idx = ALL_REMAINS.index(other)
+                            l = ALL_REMAINS
+                        else:
+                            print("was other")
+                            oth_idx = ALL_MONS.index(other)
+                            l = ALL_MONS
+                    
+                    mon, other = run_encounter(mon, other)
+
+                    ALL_MONS[mon_idx] = mon
+                    if isinstance(other, Plant):
+                        l[oth_idx] = other
+                    elif isinstance(other, Mon):
+                        l[oth_idx] = other
+                    elif isinstance(other, Remains):
+                        if f == "was mon":
+                            ALL_MONS[oth_idx] = None
+                            ALL_REMAINS.append(other)
+                        else:
+                            l[oth_idx] = other
+                    else:
+                        # print("error updating events in main")
+                        pass 
+
+            # print(f"All Mons :{ALL_MONS} before reorg")
+                    
+            for mon in ALL_MONS:
+                i = ALL_MONS.index(mon)
+                mon = end_turn(mon)
+                if isinstance(mon, Mon):
+                    # print("ismon")
+                    ALL_MONS[i] = mon
+                elif isinstance(mon, Remains):
+                    # print("is dead")
+                    ALL_MONS[i] = None
+                    ALL_REMAINS.append(mon)
+                else:
+                    # print("big problem")
+                    ALL_MONS[i] = None
+
+            #TODO fix bug where remains spawn with 4x health like plants
+            #TODO fix bug where a mon can still act once before dying due to an attack
+            ALL_REMAINS = [remains for remains in ALL_REMAINS if isinstance(remains, Remains)]
+            # print(f"All Mons :{ALL_MONS} before clean")
+            ALL_MONS = [mon for mon in ALL_MONS if isinstance(mon, Mon)]
+            # print(f"All Mons :{ALL_MONS} after clean")
+            ALL_PLANTS = [plant for plant in ALL_PLANTS if isinstance(plant, Plant)]
+            print()
+
+
+            
+
+            if len(ALL_MONS) < 1:
+                print(f"ecosystem out of mons at turn {total_turns}")
+                total_turns = 0
+                
+                break
+        
+        # for obj in ALL_PLANTS + ALL_MONS + ALL_REMAINS:
+            # print_guy(obj)
+
+
+########################INIT SIM###################################
 
 def random_plant():
 
@@ -168,54 +321,6 @@ def random_plant():
     return Plant(stats, [element], buffs)
 
 
-def plant_turn(plant):
-    global SPACE_TAKEN
-    global TOTAL_SPACE
-    global ALL_PLANTS
-
-    regen = plant.stats[STATS.HP] // 8
-
-    if plant.buffs[STATS.HP] > 0:
-        plant.buffs[STATS.HP] -= regen
-    
-    if plant.buffs[STATS.HP] < 0:
-        plant.buffs[STATS.HP] = 0
-
-    if SPACE_TAKEN < TOTAL_SPACE:
-        new_plant = spawn_plant(plant)
-        ns = 0
-        for stat in new_plant.stats:
-            ns += new_plant.stats[stat]
-
-        SPACE_TAKEN += ns
-        ALL_PLANTS.append(new_plant)
-
-
-def spawn_plant(parent):
-    values = []
-    buffv = []
-    for stat in parent.stats:
-        value = parent.stats[stat]
-        buffv.append(0)
-        if random.randrange(0, 100) < 3:
-            value += random.randrange(-1, 2)
-        if value < 1:
-            value = 1
-        values.append(value)
-
-    stats = dict(zip(all_stats, values))
-    buffs = dict(zip(all_stats, buffv))
-
-    element = parent.traits[0] 
-    if random.randrange(0, 1000) < 3:
-        if element != ELEMENTS.NORMAL:
-            element = ELEMENTS.NORMAL
-        else:
-            element = all_encounter_moves[random.randrange(0, len(all_encounter_moves))]
-    stats[STATS.CON] = 0
-    return Plant(stats, [element], buffs)
-
-
 def random_mon():
 
     stat_val = []
@@ -227,7 +332,7 @@ def random_mon():
     buffs = dict.fromkeys(all_stats, 0)
 
     level = random.randrange(1, 10)
-
+    age = random.randrange(50, 100)
     ran_element = all_elements[random.randrange(0, len(all_elements))]
 
     rand_traits = rand_list(all_traits)
@@ -244,13 +349,14 @@ def random_mon():
     rand_basic_moves = rand_dict([BASIC_MOVES.SEARCH_MATE, BASIC_MOVES.SEARCH_PLANT], all_basic_moves)
 
     # generate random brain
-    temp = [BASIC_INPUTS.RANDOM, BASIC_INPUTS.RANDOM, BASIC_INPUTS.RANDOM, BASIC_INPUTS.RANDOM]
+    temp = [BASIC_INPUTS.SELF_HPB, BASIC_INPUTS.SELF_ENERGYB, BASIC_INPUTS.RANDOM, BASIC_INPUTS.RANDOM]
     # basic_inputs = rand_neurons(rand_list(all_basic_inputs))
 
     basic_inputs = rand_neurons(temp)
     # encounter_inputs = rand_neurons(rand_list(all_encounter_inputs) + rand_list(all_basic_inputs))
-    
-    encounter_inputs = rand_neurons(temp)
+    other_temp = [ENCOUNTER_INPUTS.SIMILAR_SPECIES, ENCOUNTER_INPUTS.OTHER_PLANT]
+    both_tmp = other_temp + temp
+    encounter_inputs = rand_neurons(both_tmp)
     basic_hidden = rand_neurons([])
     encounter_hidden = rand_neurons([])
 
@@ -262,7 +368,7 @@ def random_mon():
         "encounter": Neural_Network(encounter_inputs, encounter_hidden, encounter_outputs)
     }
 
-    return Mon(ran_stats, buffs, level, traits, rand_encounter_m, 
+    return Mon(ran_stats, buffs, level, age, traits, rand_encounter_m, 
                rand_basic_moves, brain)
 
 
@@ -307,6 +413,11 @@ def rand_neurons(values):
     return l
 
 
+
+#######################Neural Network##########################################
+
+
+
 def process_network(network, mon, other_mon): 
     for neuron in network.inputs + network.hiddens + network.outputs:
         neuron.output = 0
@@ -315,11 +426,7 @@ def process_network(network, mon, other_mon):
 
     for neuron in network.inputs:
         neuron.input_value = get_input(neuron.action, mon, other_mon)
-        # print(f"Acton({neuron.action}) in_value({neuron.input_value})")
-    #print("____________________________________")  
     for section in [network.inputs, network.hiddens, network.outputs]:
-        #print("------------------------------------------")
-        #print(section)
         next_sec = network.hiddens
         if section == network.hiddens:
             next_sec = network.outputs
@@ -327,11 +434,8 @@ def process_network(network, mon, other_mon):
             next_sec = None
         
         for neuron in section:
-            #print("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
-            #print(f"neuron axons: {neuron.axons}")
             if neuron.input_value >= neuron.threshold:
                 out = get_neuron_function(neuron.input_value, neuron.bias, neuron.afunction)
-                #print(f"neuron in {neuron.input_value} neron out:{out}")
                 for axon in neuron.axons:
                     if  next_sec != None and axon < len(next_sec):
                         
@@ -342,23 +446,23 @@ def process_network(network, mon, other_mon):
 
     highest = network.outputs[0]
     for neuron in network.outputs:
-        print(f"action: {neuron.action} out: {neuron.output}")
+        # print(f"action: {neuron.action} out: {neuron.output}")
         if neuron.output > highest.output:
             highest = neuron
     return highest.action
 
 
 def get_neuron_function(input, bias, func):
-    #print(f"input: {input} bias: {bias} function: {func}")
+    
     match func:
         case NEURON_FUNCTIONS.MULT:
-            return (input * bias)
+            return (input + bias) # was *
         case NEURON_FUNCTIONS.ADD:
             return (input + bias)
         case NEURON_FUNCTIONS.DIVIDE:
             if bias == 0:
                 bias = 1
-            return (input / bias)
+            return (input - bias) # was /
         case NEURON_FUNCTIONS.SUBTRACT:
             return (input - bias)
         case _:
@@ -369,7 +473,7 @@ def get_neuron_function(input, bias, func):
 def get_input(request, mon, other_mon):
     match request:
         case BASIC_INPUTS.RANDOM:
-            return random.randrange(0, 100)
+            return random.randrange(-100, 100)
         case BASIC_INPUTS.SELF_HP:
             return get_encstat(STATS.HP, mon)
         case BASIC_INPUTS.SELF_ENERGY:
@@ -437,13 +541,58 @@ def get_input(request, mon, other_mon):
         case ENCOUNTER_INPUTS.OTHER_LEVEL:
             if isinstance(other_mon, Mon):
                 return other_mon.level
-            return 1
+            return 0
         case ENCOUNTER_INPUTS.SIMILAR_SPECIES:
-            return compare_species(mon, other_mon)
+            if compare_species(mon, other_mon) < 50:
+                return 100
+            else:
+                return 0
+        case ENCOUNTER_INPUTS.OTHER_ANIMAL:
+            if isinstance(other_mon, Mon):
+                return 100
+            else:
+                return 0
+        case ENCOUNTER_INPUTS.OTHER_PLANT:
+            if isinstance(other_mon, Plant):
+                return 100
+            else:
+                return 0
+        case ENCOUNTER_INPUTS.OTHER_REMAINS:
+            if isinstance(other_mon, Remains):
+                return 100
+            else:
+                return 0
         case _:
             print("neuron input request/path not found")
             return 0
 
+
+def make_move(action, mon, other):
+    match action:
+        case BASIC_MOVES.REST:
+            return rest(mon)
+        case BASIC_MOVES.SEARCH_PLANT:
+            return search_plant()
+        case BASIC_MOVES.SEARCH_ANIMAL:
+            return search_animal(mon)
+        case BASIC_MOVES.SEARCH_MATE:
+            return search_mate(mon)
+        case BASIC_MOVES.SEARCH_REMAINS:
+            return search_remains()
+
+
+        case ENCOUNTER_MOVES.SPECIAL_ATTACK:
+            return combat_move(action, mon, other)
+        case ENCOUNTER_MOVES.ATTACK:
+            return combat_move(action, mon, other)
+        case ENCOUNTER_MOVES.RUN:
+            return combat_move(action, mon, other)
+        case ENCOUNTER_MOVES.MATE:
+            return mate(mon, other)
+  
+
+
+###########Helper functions#########################
 
 def get_encstat(stat, mon):
     lv = 100
@@ -457,13 +606,17 @@ def get_encstat(stat, mon):
 
 
 def get_buffs(stat, mon):
+    if mon == None:
+        return 0
     buff = mon.buffs[stat]
     return buff
 
 
 def calculate_stats(mon, monlv, flag):
 
-    if not isinstance(mon, Mon):
+    if mon == None:
+        return {STATS.HP: 0, STATS.CON: 0}
+    elif not isinstance(mon, Mon):
         monlv = 100
 
     lv = monlv / 100
@@ -506,6 +659,17 @@ def calculate_size(mon, monlv):
             for neuron in network_section:
                 size += 1
     return size
+
+
+def coinflip(heads, tales):
+    coin = random.randrange(0,2)
+
+    result = heads
+    if coin == 0:
+        result = heads
+    else:
+        result = tales
+    return result
 
 
 def compare_species(mon, other_mon):
@@ -561,42 +725,22 @@ def compare_species(mon, other_mon):
             for i in range(j):
                 if l[i].action != ol[i].action:
                     dif += 1
-            
+    # print(f"dif: {dif}")
     return dif
 
 
-def make_move(action, mon, other):
-    match action:
-        case BASIC_MOVES.REST:
-            return rest(mon)
-        case BASIC_MOVES.SEARCH_PLANT:
-            return search_plant()
-        case BASIC_MOVES.SEARCH_ANIMAL:
-            return search_animal(mon)
-        case BASIC_MOVES.SEARCH_MATE:
-            return search_mate(mon)
-        case BASIC_MOVES.SEARCH_REMAINS:
-            return search_remains()
+#############################BASIC MOVES#######################################
 
 
-        case ENCOUNTER_MOVES.SPECIAL_ATTACK:
-            return combat_move(action, mon, other)
-        case ENCOUNTER_MOVES.ATTACK:
-            return combat_move(action, mon, other)
-        case ENCOUNTER_MOVES.RUN:
-            return combat_move(action, mon, other)
-        case ENCOUNTER_MOVES.MATE:
-            return mate(mon, other)
-        
+      
             
-
-
 def rest(mon):
     if mon.buffs[STATS.HP] > 0:
         mon.buffs[STATS.HP] = max(mon.buffs[STATS.HP] - (calculate_size(mon, mon.level) // 8), 1)
     if mon.buffs[STATS.CON] > 0:
         mon.buffs[STATS.CON] = max(mon.buffs[STATS.CON] - (calculate_size(mon, mon.level) // 8), 1)
     return None
+
 
 def search_plant():
     global ALL_PLANTS
@@ -616,15 +760,21 @@ def search_animal(mon):
             return ALL_MONS[i]
     return None
 
+
 def search_mate(mon):
     global ALL_MONS
     for i in range(len(ALL_MONS)):
         i = random.randrange(0, len(ALL_MONS))
-        if ALL_MONS[i] != None and compare_species(mon, ALL_MONS[i]) <  max(calculate_size(mon, mon.level) // 5, 1) and ALL_MONS[i] != mon:
+        if ALL_MONS[i] != None and compare_species(mon, ALL_MONS[i]) <  50 and ALL_MONS[i] != mon:
             print("found mon of similar species")
             return ALL_MONS[i]
+        else:
+            # print("mon is not similar enough to")
+            # print_guy(ALL_MONS[i])
+            pass
     print("could not find mate")
     return None
+
 
 def search_remains():
     global ALL_REMAINS
@@ -633,6 +783,59 @@ def search_remains():
         if ALL_REMAINS[i] != None:
             return ALL_REMAINS[i]
     print("could not find remains")
+
+
+def plant_turn(plant):
+    global SPACE_TAKEN
+    global TOTAL_SPACE
+    global ALL_PLANTS
+    if plant.stats[STATS.HP] <= plant.buffs[STATS.HP]:
+        return None
+    regen = plant.stats[STATS.HP] // 8
+
+    if plant.buffs[STATS.HP] > 0:
+        plant.buffs[STATS.HP] -= regen
+    
+    if plant.buffs[STATS.HP] < 0:
+        plant.buffs[STATS.HP] = 0
+
+    if SPACE_TAKEN < TOTAL_SPACE:
+        new_plant = spawn_plant(plant)
+        ns = 0
+        for stat in new_plant.stats:
+            ns += new_plant.stats[stat]
+
+        SPACE_TAKEN += ns
+        ALL_PLANTS.append(new_plant)
+    return plant
+
+
+def spawn_plant(parent):
+    values = []
+    buffv = []
+    for stat in parent.stats:
+        value = parent.stats[stat]
+        buffv.append(0)
+        if random.randrange(0, 100) < 3:
+            value += random.randrange(-1, 2)
+        if value < 1:
+            value = 1
+        values.append(value)
+
+    stats = dict(zip(all_stats, values))
+    buffs = dict(zip(all_stats, buffv))
+
+    element = parent.traits[0] 
+    if random.randrange(0, 1000) < 3:
+        if element != ELEMENTS.NORMAL:
+            element = ELEMENTS.NORMAL
+        else:
+            element = all_encounter_moves[random.randrange(0, len(all_encounter_moves))]
+    stats[STATS.CON] = 0
+    return Plant(stats, [element], buffs)
+
+
+############################ENCOUNTER MOVES########################################
 
 def combat_move(action, mon, other):
 
@@ -673,10 +876,6 @@ def combat_move(action, mon, other):
     power =  e_dict[action]
 
 
-    
-    
-
-
     dmg = max((attack * power * mod) // defence, 1)
     # print(f"mon {action.value}s with a power of {power} for {dmg} points", end=" ")
     # print(f"Reducing targets {hit_points.value} from {get_encstat(hit_points, other)}:({get_encstat(hit_points, other) - other.buffs[hit_points]}) to", end=" ")
@@ -686,209 +885,308 @@ def combat_move(action, mon, other):
 
     if not isinstance(other, Mon) and hit_points == STATS.HP:
         other_hp = get_encstat(hit_points, other) - other.buffs[hit_points]
-        if  other_hp < 0:
-            dmg += other_hp
-        mon = took_bite(mon, other, dmg)
 
+        if  other_hp < 0:
+            dmg = max(dmg + other_hp, 0)
+        if dmg > 0:
+            mon = took_bite(mon, other, dmg)
+    print(f"{hit_points.value}:{get_encstat(hit_points, other)} ({get_encstat(hit_points, other) - other.buffs[hit_points]})")
     if (isinstance(other, Plant) or isinstance(other, Remains)) and get_encstat(STATS.HP, other) - other.buffs[STATS.HP] <= 0:
         other = None
     if isinstance(other, Mon) and get_encstat(STATS.HP, other) - other.buffs[STATS.HP] <= 0:
         energy = other.energy + calculate_size(other, other.level)
-        other.traits[STATS.HP] = energy
+        other.stats[STATS.HP] = energy
         other.buffs[STATS.HP] = 0
         remains = Remains(other.stats, other.traits, other.buffs)
-        print("other should be remains")
+        print("died in combat")
         other = remains
+        
+    return mon, other 
 
+def mate(parent_a, parent_b):
+    if  isinstance(parent_b, Mon) and process_network(parent_b.brain['encounter'], parent_b, parent_a) == ENCOUNTER_MOVES.MATE:
+        print("found mate of same species")
+    elif not isinstance(parent_b, Mon):
+        print("tried to mate a non animal")
+        return parent_a, parent_b
+    elif process_network(parent_b.brain['encounter'], parent_b, parent_a) != ENCOUNTER_MOVES.MATE:
+        print("other did not consent")
+        return parent_a, parent_b
+    if  isinstance(parent_a.child, Mon):
+        print("was already carrying a child")
+        return parent_a, parent_b
+
+    buff_values = []
+    buff_keys = []
+    for stat in all_stats:
+        buff_keys.append(stat)
+        buff_values.append(0)
+    buffs = dict(zip(buff_keys, buff_values))
+
+    stats = copy.deepcopy(buffs)
+    
+    for stat in all_stats:
+        parent = coinflip(parent_a, parent_b)
+        stats[stat] = max(parent.stats[stat] + mutate_val(), 1)
+
+    parent = coinflip(parent_a, parent_b)
+    max_level = max(parent.max_level + mutate_val(), 1)
+
+    parent = coinflip(parent_a, parent_b)
+    max_age = max(parent.max_age + mutate_val(), 1)
     
 
+    traits = {}
+    b_moves = {}
+    e_moves = {}
+    for attr in ['traits', 'encounter_moves', 'basic_moves']:
+        t = []
+        v = []
+        parent = coinflip(parent_a, parent_b)
+        other_parent = parent_a
+        if parent == parent_a:
+            other_parent = parent_b
+        parent_attr = getattr(parent, attr)
+        other_pattr = getattr(other_parent, attr)
+        for item in parent_attr:
+            if item in other_pattr:
 
-    return [mon, other] 
+                t.append(item)
+                win = coinflip(parent_a, parent_b)
+                parent_items = getattr(win, attr)
+                v.append(parent_items[item])
+            else:
+                win = coinflip(parent_a, parent_b)
+                parent_items = getattr(win, attr)
+                if win == parent:
+                    t.append(item)
+                    v.append(parent_items[item])
 
-def mate(mon, other):
-    return [mon, other]
-def main():
-    #are there animals in ecosystem?
+        items = dict(zip(t, v))
 
-    #if no generate batch of random mons
-
-    #run simulation
-    global ALL_PLANTS
-    global SPACE_TAKEN
-    global ALL_MONS
-    global ALL_REMAINS
-
-    
-    ALL_PLANTS = [random_plant() for  i in range(5)]
-    total_turns = 0
-    while True:
-        try:
-            turns = input("turns: ")
-            if turns == "q":
-                break
-        except:
-            print("put in a int")
-
-        
-        for i in range(int(turns)):
-            total_turns += 1
-
-
-            print(f"__TURN: {total_turns}__")
-            j = 0
-            print(f"Space taken = {SPACE_TAKEN}")
-            for plant in ALL_PLANTS:
-                print()
-                j += 1
-                plant_turn(plant)
-                
-                print(f"__plant: {j}__")
-                print_plant(plant)
-                print()
-
-            if len(ALL_MONS) < 1:
-                copies = []
-                ALL_MONS = [random_mon() for i in range(4)]
-                for mon in ALL_MONS:
-                    for j in range(4):
-                        copies.append(copy.deepcopy(mon))
-                ALL_MONS = ALL_MONS + copies
-            k = 0
-            for mon in ALL_MONS:
-                mon_idx = ALL_MONS.index(mon)
-                k += 1
-                if isinstance(mon, Mon):
-                
-                    print()
-                    print(f"__mon: {k}__")
-                    print_mon(mon)
-                    move =  process_network(mon.brain['basic'], mon, None)
-                    other = make_move(move, mon, None)
-                    
-                if other != None and mon != None:
-                    
-                    oth_idx = 0
-                    l = []
-                    f = ""  
-                    if isinstance(other, Plant):
-                        oth_idx = ALL_PLANTS.index(other)
-                        l = ALL_PLANTS
-                    elif isinstance(other, Mon):
-                        oth_idx = ALL_MONS.index(other)
-                        f = "was mon"
-                        l = ALL_MONS
-                    elif isinstance(other, Remains):
-                        oth_idx = ALL_REMAINS.index(other)
-                        l = ALL_REMAINS
-                    else:
-                        print("other obj not found in any relevent list main()")
-                    
-                    after_enc = run_encounter(mon, other)
-                    mon = after_enc[0] 
-                    other = after_enc[1]
-
-                    ALL_MONS[mon_idx] = mon
-                    if isinstance(other, Plant):
-                        l[oth_idx] = other
-                    elif isinstance(other, Mon):
-                        l[oth_idx] = other
-                    elif isinstance(other, Remains):
-                        if f == "was mon":
-                            ALL_MONS[oth_idx] = None
-                            ALL_REMAINS.append(other)
-                        else:
-                            l[oth_idx] = other
-                    else:
-                        print("error updating events in main")
-
-                    
-            for mon in ALL_MONS:
-                if not isinstance(mon, Mon):
-                    continue
-                i = ALL_MONS.index(mon)
-                mon = energy_drain(mon)
-                if isinstance(mon, Mon):
-                    ALL_MONS[i] = mon
-                elif isinstance(mon, Remains):
-                    ALL_MONS[i] = None
-                    ALL_REMAINS.append(mon)
-                else:
-                    ALL_MONS[i] = None
-
-
-            ALL_REMAINS = [remains for remains in ALL_REMAINS if isinstance(remains, Remains)]
-            ALL_MONS = [mons for mons in ALL_MONS if isinstance(mons, Mon)]
-            ALL_PLANTS = [plant for plant in ALL_PLANTS if isinstance(plant, Plant)]
-            print()
-
-        
-        for obj in ALL_PLANTS + ALL_MONS + ALL_REMAINS:
-            # print_guy(obj)
-            pass
-
-
+        if not items:
+            print("DEBUG: items went empty for", attr, parent_a, parent_b)
+            return parent_a, parent_b
+        for item in items:
+            items[item] = max(items[item] + mutate_val(), 1)
+        item = random.choice(list(items))
+        if isinstance(item, ELEMENTS) and mutate_trait(items[item]):
+            if item != ELEMENTS.NORMAL:
+                items[ELEMENTS.NORMAL] = items.pop(item)
+            else:
+                items[all_elements[random.randrange(0, len(all_elements))]] = items.pop(item)
             
+        elif not isinstance(item, ELEMENTS) and mutate_trait(items[item]): 
+            if coinflip(0, 1) == 0:
+                all_list = all_traits
+                if attr == 'traits':
+                    all_list = all_traits
+                elif attr == 'encounter_moves':
+                    all_list = all_encounter_moves
+                else:
+                    all_list = all_basic_moves            
+                items[all_list[random.randrange(0, len(all_list))]] = 1
+            else:
+                if not len(items) > 2:
+                    items.pop(item) 
+
+        all_list = all_traits
+        if attr == 'traits':
+            traits = items
+        elif attr == 'encounter_moves':
+            e_moves = items
+        else:
+            b_moves = items
+
+
+    brain = copy.deepcopy(parent_a.brain)
+    
+
+    for net in ['basic', 'encounter']:
+        for section in ['hiddens', 'outputs', 'inputs']:
+            neurons = getattr(brain[net], section)
+            for neuron in neurons:
+                b_neurons = getattr(parent_b.brain[net], section)
+                if 1 == coinflip(0, 1):
+                    idx = neurons.index(neuron)
+                    if idx <= len(b_neurons) and idx > len(b_neurons):
+                        neurons[idx] = b_neurons[idx]
+                
+                # finished inheritance now mutate 
+                for nur_attr in ['threshold', 'axons', 'bias']:
+                    ru_val = getattr(neuron, nur_attr)
+                    if nur_attr == 'axons':
+                        for axon in ru_val:
+                            axon += max(mutate_val() + axon, 0)
+                    else:
+                        ru_val += mutate_val()
+                        
+            if mutate_trait(0):
+                neuron.afunction = all_funcions[random.randrange(0, len(all_funcions))]
+
+            if section == 'inputs' and mutate_trait(0):
+                if net == 'basic':
+                    neuron.action == all_basic_inputs[random.randrange(0, len(all_basic_inputs))]
+                else:
+                    all_ins = all_basic_inputs + all_encounter_inputs
+                    neuron.action = all_ins[random.randrange(0, len(all_ins))]
+    
+    for net in ['basic', 'encounter']:
+        moves = b_moves
+        if net == 'encounter':
+            moves = e_moves
+        for move in moves:
+            found = False
+            for neuron in brain[net].outputs:
+                if move == neuron.action:
+                    found = True
+                    break
+
+            if not found:
+                input = 0
+                thresh = random.randrange(-10, 10)
+                output = 0
+                axons = []
+                bias = random.randrange(-3, 3)
+                func = all_funcions[random.randrange(0, len(all_funcions))]
+                brain[net].outputs.append(Neuron(move, input, thresh, output, axons, bias, func))
+
+        for neuron in brain[net].outputs:
+            if neuron.action not in moves:
+                neuron.action = random.choice(list(moves.keys()))
+
+    for net in ['basic', 'encounter']:
+        for section in ['hiddens', 'inputs']:
+            neurons = getattr(brain[net], section)
+            for neuron in neurons:
+                if mutate_trait(0):
+                    if coinflip(0, 1) == 1:
+                        input = 0
+                        thresh = random.randrange(-10, 10)
+                        output = 0
+                        axons = [random.randrange(0, len(neurons))]
+                        bias = random.randrange(-3, 3)
+                        func = all_funcions[random.randrange(0, len(all_funcions))]
+                        v = "hidden"
+
+                        if section == 'inputs':
+                            if net == 'basic':
+                                v = all_basic_inputs[random.randrange(0, len(all_basic_inputs))]
+                            else:
+                                all_in = all_encounter_inputs + all_basic_inputs
+                                v  = all_in[random.randrange(0, len(all_in))]
+                        neurons.append(Neuron(v, input, thresh, output, axons, bias, func))
+                    else:
+                        if len(neurons) > 1:
+                            neurons.pop()                
+                elif mutate_trait(0):
+                    if coinflip(0, 1) == 1:
+                        neuron.axons.append(random.randrange(0, 5))
+                    else:
+                        if len(neuron.axons) > 1:
+                            neuron.axons.pop()
+                        
+    # add mon to parent and have parent drain more energy over time until enough energy is used to birth the new animal
+    # If I run now we have a change for inf-loop also need to add old age      
+    
+
+    # 
+    # 
+    #  
+    new_mon = Mon(stats, buffs, max_level, max_age, traits, e_moves, b_moves, brain)
+
+    parent_a.child = new_mon
+    parent_a.turns_carried = 0
+    print("mons mated")
+    return parent_a, parent_b
+
+def mutate_val():
+    if random.randrange(0, 100) < 3:
+        return random.randrange(-1,2)
+    return 0
+
+def mutate_trait(val):
+    if random.randrange(0, 1000) < 3 and val < 11:
+        return True
+    return False
 
 def run_encounter(actor, recp):
     for guy in [actor, recp]:
         guy.buffs[STATS.CON] = 0
     print("encounter started")
-    re = False
-    for t in range(10):
-        i = 0 
-        for a in [actor, recp]:
-            # print_guy(a)
+    
+    for t in range(10): 
 
-            if a == actor:
+
+        for i in range(2):
+            fin = False
+            if i == 0:
+                a = actor
                 r = recp
             else:
                 r = actor
+                a = recp
+
+            # print_guy(a)
+            for trait in a.traits:
+                if isinstance(trait, ELEMENTS):
+                    # print(trait.value['element'], end=" ")
+                    pass
+                else:
+                    # print(trait.value, end=" ")
+                    pass
             #print(a)
-            if not isinstance(a, Mon):
-                continue
-            action = process_network(a.brain['encounter'], a, r)
-            print(f"Chose to {action}")
-            a, r = make_move(action, a, r)
-            if ran_away(r):
-                print("Ran away")
-                re = True
-            elif all_gone(r):
-                re = True
-                r = None
-                print("Was completly consumed")
-                
-            
+            if isinstance(a, Mon):
+                # print_brain(a.brain)
+                action = process_network(a.brain['encounter'], a, r)
+                print(f"{i} Chose to {action}")
+                a, r = make_move(action, a, r)
+                if r == None:
+                    print("other object is none")
+                    fin = True
+                elif ran_away(r) and action == ENCOUNTER_MOVES.RUN:
+                    print("Ran away")
+                    fin = True
+                elif all_gone(r):
+                    print("other object consumed")
+                    fin = True
+                    r = None
             if i == 0:
                 actor = a
                 recp = r
             else:
                 actor = r
                 recp = a
-            i += 1
-            print()
-            if re:
+            if fin:
                 return actor, recp
+            i += 1
+
     return actor, recp
 
-def print_guy(guy):
-    if isinstance(guy, Mon):
-        print_mon(guy)
-    elif isinstance(guy, Plant):
-        print_plant(guy)
-    elif isinstance(guy, Remains):
-        print("oh my god it's a body")
+
 def ran_away(mon):
+    if not isinstance(mon, Mon):
+        return True
     if get_encstat(STATS.CON, mon) <= mon.buffs[STATS.CON]:
         return True
     return False
 
 def all_gone(prey):
-    if get_encstat(STATS.HP, prey) <= prey.buffs[STATS.HP]:
+    if get_encstat(STATS.HP, prey) - prey.buffs[STATS.HP] < 0:
         return True
     return False
 
+def gain_exp(mon, exp):
+    mon.exp += exp
+    if mon.exp > mon.level * 10 and mon.level < mon.max_level:
+        mon.level += 1
+        mon.exp = 0
+    return mon
+
 def took_bite(perp, target, dmg):
-    if isinstance(target, Plant) or isinstance(target, Remains):
+    if (isinstance(target, Plant) and TRAITS.HERBAVOR) or (isinstance(target, Remains) and TRAITS.CARNIVOR):
+
+        perp = gain_exp(perp, dmg)
         #print(f"Mon gained {dmg} energy", end=" ")
         perp.energy -= dmg
         if perp.energy < 0:
@@ -897,22 +1195,56 @@ def took_bite(perp, target, dmg):
     return perp
 
 
-def energy_drain(mon):
+
+###################Process end of turn##################
+
+def end_turn(mon):
+    global ALL_MONS
     if not isinstance(mon, Mon):
         return mon
+    mon.age += 1
     mon.energy += max(calculate_size(mon, mon.level) // 30, 1)
-    if mon.energy >= calculate_size(mon, mon.level) and isinstance(mon, Mon):
+
+    if isinstance(mon.child, Mon):
+        mon.energy += max(calculate_size(mon.child, mon.level) // 8, 1)
+        mon.turns_carried += 1
+
+    if mon.energy >= calculate_size(mon, mon.level)  or (mon.age >= mon.max_age and random.randrange(0, 10) == 0):
+        if mon.age > mon.max_age:
+            print("died of old age")
+        else:
+            print("killed by starvation")
         energy = calculate_size(mon, mon.level)
-        mon.stats[STATS.HP] = energy
-        mon.buffs[STATS.HP] = 0
+        mon.stats[STATS.HP], mon.buffs[STATS.HP] = energy, 0
         mon = Remains(mon.stats, mon.traits, mon.buffs)
+        return mon
+
+    if isinstance(mon.child, Mon) and mon.turns_carried >= 16:
+        ALL_MONS.append(mon.child)
+        mon.child, mon.turns_carried = None, 0
     return mon
 
+
+
+
+###################PRINT TO TERM##############################
+
+def print_guy(guy):
+    if isinstance(guy, Mon):
+        print_mon(guy)
+    elif isinstance(guy, Plant):
+        print_plant(guy)
+    elif isinstance(guy, Remains):
+        print("oh my god it's a body")
+
 def print_plant(plant):
-    
+    for trait in plant.traits:
+        if isinstance(trait, ELEMENTS):
+            print(str(trait.value['element'] + "type"), end=", ")
     print("HP " + str(plant.stats[STATS.HP]) + ":(" + str(plant.stats[STATS.HP] - plant.buffs[STATS.HP]) + ") " +
         "D: " + str(plant.stats[STATS.D]) + " " + "SD: " + str(plant.stats[STATS.SD]))
     print()
+
 def print_mon(mon):
     i = 0
     for trait in mon.traits:
@@ -921,31 +1253,37 @@ def print_mon(mon):
         else:
             print(str(trait.value), end=", ")
     print()
-    for lv in [mon.max_level, mon.level]:
+    for lv in [ mon.level]: # mon.max_level,
         if i == 0:
             print("Max Level")
         else:
             print("Current Level")
         mls = calculate_stats(mon, lv, "stats")
-        print("Lv: " + str(lv) + " HP " + str(mls[STATS.HP] * 4) + ":(" + str((mls[STATS.HP] * 4) - mon.buffs[STATS.HP]) + ") " +
+        print(f"Lv: " + str(lv) + " HP " + str(mls[STATS.HP] * 4) + ":(" + str((mls[STATS.HP] * 4) - mon.buffs[STATS.HP]) + ") " +
               " C " + str(mls[STATS.CON] * 4) + ":(" + str((mls[STATS.CON] * 4) - mon.buffs[STATS.CON]) + ") " +
               "D: " + str(mls[STATS.D]) + " " + "SD: " + str(mls[STATS.SD]) + " " + "A: " + str(mls[STATS.A]) + " " +
               "SA: " + str(mls[STATS.SA]) + " " + "S: " + str(mls[STATS.S]) + " E " + str(calculate_size(mon, lv)) + 
-              ":(" + str(calculate_size(mon, lv) - mon.energy) + ") ")
+              ":(" + str(calculate_size(mon, lv) - mon.energy) + f") Age:{mon.max_age}({mon.age}) Carrying {mon.child} due:(16) {mon.turns_carried}")
         
 
-        mems = calculate_stats(mon, lv, "e moves")
-        mbms = calculate_stats(mon, lv, "")
-        big_d = mbms | mems
-        for key in big_d:
-            print("(" + str(key.value) + " P: " + str(big_d[key]) + ")", end=" ")
+        d = calculate_stats(mon, lv, "e moves") | calculate_stats(mon, lv, "")
+        for key in d:
+            print("(" + str(key.value) + " P: " + str(d[key]) + ")", end=" ")
         print()
         i += 1
     print()
 
+def print_brain(brain):
+    print(brain)
+    for net in ['encounter', 'basic']:
+        for layer in ['inputs', 'hiddens', 'outputs']:
+            neurons = getattr(brain[net], layer)
+            for neuron in neurons:
+                print(net + " " + layer)
+                print(neuron.action)
+                print(neuron.axons)
+                print(neuron.threshold)
+                print(neuron.afunction.value)
+                print(neuron.bias)
+
 main()
-
-
-# stats are the basic numbers while traits give bonuses to certain skills ie walking vs swimming
-
-#traits walking stat
