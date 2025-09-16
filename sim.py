@@ -2,6 +2,9 @@ import copy
 import random 
 from enum import Enum
 
+import sys
+import gc
+
 
 
 ################Classes##############
@@ -122,17 +125,26 @@ class Mon():
         self.turns_carried = 0
 
 class Plant():
-    def __init__(self, stats, traits, buffs):
+    def __init__(self, stats, traits, buffs, max_age, max_level):
         self.stats = stats
+        self.stats[STATS.CON] = 0
         self.traits = traits
         self.buffs = buffs
+        self.max_age = max_age
+        self.age = self.exp = 0
+        self.level = 1
+        self.max_level = max_level
 
 class Remains():
-    def __init__(self, stats, traits, buffs):
+    def __init__(self, stats, traits, buffs, level):
         self.stats = stats
         self.traits = traits
         self.buffs = buffs
         self.stats[STATS.CON] = 0
+        self.level = level
+        self.exp = 0
+        self.age = 0
+        self.max_age = 8
 
 all_stats = [stat for stat in STATS]
 all_elements = [el for el in ELEMENTS]
@@ -145,180 +157,188 @@ all_funcions = [func for func in NEURON_FUNCTIONS]
 
 TOTAL_SPACE = 10000
 SPACE_TAKEN = 0
+DIST_BETWEEN_SPECIES = 50
 
-ALL_PLANTS = []
-ALL_MONS = []
-ALL_REMAINS = []
-
-
-######Main####
+ECO = []
+NEW_OBJs = []
+######Main ####
 
 def main():
-    #are there animals in ecosystem?
-
-    #if no generate batch of random mons
-
-    #run simulation
-    global ALL_PLANTS
-    global SPACE_TAKEN
-    global ALL_MONS
-    global ALL_REMAINS
-
-    
-    ALL_PLANTS = [random_plant() for i in range(5)]
-    total_turns = 0
+    global ECO, NEW_OBJs
+    total_turns = turns = 0
     while True:
         if total_turns == 0:
-            copies = []
-            ALL_MONS = [random_mon() for i in range(20)]
-            for mon in ALL_MONS:
-                for j in range(9):
-                    copies.append(copy.deepcopy(mon))
-            ALL_MONS = ALL_MONS + copies
-                # print(f"All Mons :{ALL_MONS} after repopulation")
-            # print(f"All Mons :{ALL_MONS} before user input")
-        
-        # if total_turns > 500:
-        try:
-            turns = input(f"turns ({total_turns}): ")
+            randmons = [random_mon() for _ in range(4)]
+            ECO = [copy.deepcopy(mon) for mon in randmons for _ in range(10)]
+            ECO += [random_plant() for _ in range(50)]
+            s = ''
+        debug_memory_usage()
+        if turns > 200:
+            turns = input(f"{s} turns ({total_turns}): ")
             if turns == "q":
-                break
-        except:
-            print("put in a int")
+                    break
+            try:
+                    turns = int(turns)
+            except ValueError:
+                print("input number!")
+                turns = 0
+        else:
+            turns = 1
         
-        for i in range(int(turns)):
+        for _ in range(turns):
             total_turns += 1
 
-
-            print(f"__TURN: {total_turns}__")
-            j = 0
+            print(f"\n__TURN: {total_turns}__")
+            i = 0
             print(f"Space taken = {SPACE_TAKEN}")
-            for plant in ALL_PLANTS:
-                plant = plant_turn(plant)
-                if isinstance(plant, Plant):
-                    # print()
-                    j += 1
-                    print(f"__plant: {j}__")
-                    print_plant(plant)
-                    print()
+            for idx, obj in enumerate(ECO):
+                if obj == None:
+                    continue
+                i += 1
+                obj = obj_death(obj)
+                if isinstance(obj, Plant):
+                    print(f"__plant: {i}__")
+                    print_obj(obj)
+                    obj = plant_turn(obj)
+                elif isinstance(obj, Remains):
+                    print(f"__Remains: {i}__")
+                    print_obj(obj)
+                    obj = remains_turn(obj)
+                elif isinstance(obj, Mon):
+                    print(f"__mon: {i}__")
+                    print_obj(obj)
+                    obj = monturn(obj)
+                print()
 
-            for remains in ALL_REMAINS:
-                remains.buffs[STATS.HP] += 1
-                if remains.stats[STATS.HP] <= remains.buffs[STATS.HP]:
-                    remains = None
-                else:
-                    print(f"HP {remains.stats[STATS.HP]}({remains.stats[STATS.HP] - remains.buffs[STATS.HP]})")
-            k = 0
+                obj = end_turn(obj)
+                ECO[idx] = obj
 
-            for mon in ALL_MONS:
-                mon_idx = ALL_MONS.index(mon)
-                k += 1
-                if isinstance(mon, Mon):
+
+            ECO += NEW_OBJs
+            ECO, NEW_OBJs = [obj for obj in ECO if obj is not None], []
+
+            mons = sum(1 for obj in ECO if isinstance(obj, Mon))
+            plants = sum(1 for obj in ECO if isinstance(obj, Plant))
+            remains = sum(1 for obj in ECO if isinstance(obj, Remains))
+            s = f'Mons:{mons} Plants:{plants} Remains:{remains}'
+            if 0 in (mons, plants):
+                print(f"ecosystem collapsed at turn: {total_turns} {s}")
+                total_turns = 0
+                break
+
+
+def plant_turn(plant: Plant) -> Plant:
+    global NEW_OBJs
+    global SPACE_TAKEN
+    
+
+    plant.age = plant.age + 1
+
+    regen = get_encstat(STATS.HP, plant) // 8
+
+    if plant.buffs[STATS.HP] > 0:
+        plant.buffs[STATS.HP] -= regen
+    
+    if plant.buffs[STATS.HP] < 0:
+        plant.buffs[STATS.HP] = 0
+
+    if SPACE_TAKEN < TOTAL_SPACE:
+        plant = gain_exp(plant, 10)
+        new_plant = spawn_plant(plant)
+        ns = 0
+        for stat in new_plant.stats:
+            ns += new_plant.stats[stat]
+
+        SPACE_TAKEN += ns
+        NEW_OBJs.append(new_plant)
+        
+
+    if get_encstat(STATS.HP, plant) <= plant.buffs[STATS.HP]:
+        return None
+
+    return plant
+
+
+def remains_turn(remains: Remains) -> Remains:
+    return remains
+
+
+def monturn(mon: Mon) -> Mon:
+    global ECO
+    mon.age += 1
+    
+    action =  process_network(mon.brain['basic'], mon, None)
+    print(f"Mon chose to {action.value}")
+    mon, other = make_move(action, mon, None)
+    if other == None:
+        return mon
+    
+    oth_idx = -1
+    for idx, obj in enumerate(ECO):
+        if obj is other:
+            oth_idx = idx
+
+    mon, other = run_encounter(mon, other)
+    ECO[oth_idx] = other 
+    return mon
+
+
+def run_encounter(actor, recp):
+    for guy in [actor, recp]:
+        guy.buffs[STATS.CON] = 0
+    print("encounter started")
+    
+    max_encounter_turns = 10
+    for _ in range(max_encounter_turns): 
+
+        enc_fin = False
+        for a, r in [(actor, recp),(recp, actor)]:
+            if r == None:
+                    print("other object has been destroyed")
+                    enc_fin = True
+                    break
+
+            if isinstance(a, Mon):
+                action = process_network(a.brain['encounter'], a, r)
+                print(f"{a} Chose to {action}")
+                na, nr = make_move(action, a, r)
                 
-                    print()
-                    print(f"__mon: {k}__")
-                    print_mon(mon)
-                    move =  process_network(mon.brain['basic'], mon, None)
-                    print(f"Mon chose to {move.value}")
-                    other = make_move(move, mon, None)
-                    mon.age += 1
-                    ALL_MONS[mon_idx] = mon
-                if other != None and mon != None:
-                    
-                    oth_idx = 0
-                    l = []
-                    f = ""  
-                    if isinstance(other, Plant):
-                        oth_idx = ALL_PLANTS.index(other)
-                        l = ALL_PLANTS
-                    elif isinstance(other, Mon):
-                        oth_idx = ALL_MONS.index(other)
-                        l = ALL_MONS
-                    elif isinstance(other, Remains):
-                        if other in ALL_REMAINS:
-                            oth_idx = ALL_REMAINS.index(other)
-                            l = ALL_REMAINS
-                        else:
-                            print("was other")
-                            oth_idx = ALL_MONS.index(other)
-                            l = ALL_MONS
-                    
-                    mon, other = run_encounter(mon, other)
-
-                    ALL_MONS[mon_idx] = mon
-                    if isinstance(other, Plant):
-                        l[oth_idx] = other
-                    elif isinstance(other, Mon):
-                        l[oth_idx] = other
-                    elif isinstance(other, Remains):
-                        if f == "was mon":
-                            ALL_MONS[oth_idx] = None
-                            ALL_REMAINS.append(other)
-                        else:
-                            l[oth_idx] = other
-                    else:
-                        # print("error updating events in main")
-                        pass 
-
-            # print(f"All Mons :{ALL_MONS} before reorg")
-                    
-            for mon in ALL_MONS:
-                i = ALL_MONS.index(mon)
-                mon = end_turn(mon)
-                if isinstance(mon, Mon):
-                    # print("ismon")
-                    ALL_MONS[i] = mon
-                elif isinstance(mon, Remains):
-                    # print("is dead")
-                    ALL_MONS[i] = None
-                    ALL_REMAINS.append(mon)
-                else:
-                    # print("big problem")
-                    ALL_MONS[i] = None
-
-            #TODO fix bug where remains spawn with 4x health like plants
-            #TODO fix bug where a mon can still act once before dying due to an attack
-            ALL_REMAINS = [remains for remains in ALL_REMAINS if isinstance(remains, Remains)]
-            # print(f"All Mons :{ALL_MONS} before clean")
-            ALL_MONS = [mon for mon in ALL_MONS if isinstance(mon, Mon)]
-            # print(f"All Mons :{ALL_MONS} after clean")
-            ALL_PLANTS = [plant for plant in ALL_PLANTS if isinstance(plant, Plant)]
-            print()
-
+                if (a, r) == (actor, recp):
+                    actor, recp = na, nr
+                else:  # (a, r) == (recp, actor)
+                    recp, actor = na, nr
+                if ran_away(r) and action == ENCOUNTER_MOVES.RUN:
+                    print("Ran away")
+                    enc_fin = True
 
             
 
-            if len(ALL_MONS) < 1:
-                print(f"ecosystem out of mons at turn {total_turns}")
-                total_turns = 0
-                
+            if enc_fin:
                 break
-        
-        # for obj in ALL_PLANTS + ALL_MONS + ALL_REMAINS:
-            # print_guy(obj)
+        if enc_fin:
+            break
+
+    return actor, recp
 
 
-########################INIT SIM###################################
+#CLEAN TODO  ####################### INIT SIM  ###################################
 
 def random_plant():
-
     value = []
     buff = []
     for stats in all_stats:
-        if stats != STATS.HP:
-            value.append(random.randrange(1, 100))
-        else:
-            value.append(random.randrange(1, 100) * 4)
+        value.append(random.randrange(100, 400))
         buff.append(0)
+
     stats = dict(zip(all_stats, value))
-
     element = all_elements[random.randrange(0, len(all_elements))]
-
     buffs = dict(zip(all_stats, buff))
-
     stats[STATS.CON] = 0
 
-    return Plant(stats, [element], buffs)
+    max_age = random.randrange(400, 1000)
+    max_level = random.randrange(10, 200)
+
+    return Plant(stats, {element: 50}, buffs, max_age, max_level)
 
 
 def random_mon():
@@ -413,9 +433,7 @@ def rand_neurons(values):
     return l
 
 
-
-#######################Neural Network##########################################
-
+#CLEAN TODO   ######################Neural Network##########################################
 
 
 def process_network(network, mon, other_mon): 
@@ -446,7 +464,6 @@ def process_network(network, mon, other_mon):
 
     highest = network.outputs[0]
     for neuron in network.outputs:
-        # print(f"action: {neuron.action} out: {neuron.output}")
         if neuron.output > highest.output:
             highest = neuron
     return highest.action
@@ -470,7 +487,7 @@ def get_neuron_function(input, bias, func):
             return 0
 
 
-def get_input(request, mon, other_mon):
+def get_input(request, mon, obj):
     match request:
         case BASIC_INPUTS.RANDOM:
             return random.randrange(-100, 100)
@@ -489,76 +506,74 @@ def get_input(request, mon, other_mon):
         case BASIC_INPUTS.SELF_SPEED:
             return get_encstat(STATS.S, mon)
         case BASIC_INPUTS.SELF_HPB:
-            return get_buffs(STATS.HP, mon)
+            return mon.buffs[STATS.HP]
         case BASIC_INPUTS.SELF_ENERGYB:
             return mon.energy
         case BASIC_INPUTS.SELF_ATTACKB:
-            return get_buffs(STATS.A, mon)
+            return mon.buffs[STATS.A]
         case BASIC_INPUTS.SELF_SAB:
-            return get_buffs(STATS.SA, mon)
+            return mon.buffs[STATS.SA]
         case BASIC_INPUTS.SELF_DEFENSEB:
-            return get_buffs(STATS.D, mon)
+            return mon.buffs[STATS.D]
         case BASIC_INPUTS.SELF_SDB:
-            return get_buffs(STATS.SD, mon)
+            return mon.buffs[STATS.SD]
         case BASIC_INPUTS.SELF_SPEEDB:
-            return get_buffs(STATS.S, mon)
+            return mon.buffs[STATS.S]
         case BASIC_INPUTS.SELF_LEVEL:
             return mon.level
         case ENCOUNTER_INPUTS.OTHER_HP:
-            return get_encstat(STATS.HP, other_mon)
+            return get_encstat(STATS.HP, obj)
 
         case ENCOUNTER_INPUTS.OTHER_ENERGY:
-            if not isinstance(other_mon, Mon):
-                return 0
-            return calculate_size(other_mon, other_mon.level)
+            return calculate_size(obj, obj.level)
         case ENCOUNTER_INPUTS.OTHER_ATTACK:
-            return get_encstat(STATS.A, other_mon)
+            return get_encstat(STATS.A, obj)
         case ENCOUNTER_INPUTS.OTHER_SA:
-            return get_encstat(STATS.SA, other_mon)
+            return get_encstat(STATS.SA, obj)
         case ENCOUNTER_INPUTS.OTHER_DEFENSE:
-            return get_encstat(STATS.D, other_mon)
+            return get_encstat(STATS.D, obj)
         case ENCOUNTER_INPUTS.OTHER_SD:
-            return get_encstat(STATS.SD, other_mon)
+            return get_encstat(STATS.SD, obj)
         case ENCOUNTER_INPUTS.OTHER_SPEED:
-            return get_encstat(STATS.S, other_mon)
+            return get_encstat(STATS.S, obj)
         case ENCOUNTER_INPUTS.OTHER_HPB:
-            return get_buffs(STATS.HP, other_mon)
+            return mon.buffs[STATS.HP]
         case ENCOUNTER_INPUTS.OTHER_ENERGYB:
-            if not isinstance(other_mon, Mon):
+            if not isinstance(obj, Mon):
                 return 0
             else:
-                return other_mon.energy
+                return obj.energy
         case ENCOUNTER_INPUTS.OTHER_ATTACKB:
-            return get_buffs(STATS.A, other_mon)
+            return mon.buffs[STATS.A]
         case ENCOUNTER_INPUTS.OTHER_SAB:
-            return get_buffs(STATS.SA, other_mon)
+            return mon.buffs[STATS.SA]
         case ENCOUNTER_INPUTS.OTHER_DEFENSEB:
-            return get_buffs(STATS.D, other_mon)
+            return mon.buffs[STATS.D]
         case ENCOUNTER_INPUTS.OTHER_SDB:
-            return get_buffs(STATS.SD, other_mon)
+            return mon.buffs[STATS.SD]
         case ENCOUNTER_INPUTS.OTHER_SPEEDB:
-            return get_buffs(STATS.S, other_mon)
+            return mon.buffs[STATS.S]
         case ENCOUNTER_INPUTS.OTHER_LEVEL:
-            if isinstance(other_mon, Mon):
-                return other_mon.level
+            if isinstance(obj, Mon):
+                return obj.level
             return 0
         case ENCOUNTER_INPUTS.SIMILAR_SPECIES:
-            if compare_species(mon, other_mon) < 50:
+            if isinstance(obj, Mon) and compare_species(mon, obj) < DIST_BETWEEN_SPECIES:
                 return 100
             else:
                 return 0
         case ENCOUNTER_INPUTS.OTHER_ANIMAL:
-            if isinstance(other_mon, Mon):
+            if isinstance(obj, Mon):
                 return 100
             else:
                 return 0
         case ENCOUNTER_INPUTS.OTHER_PLANT:
-            if isinstance(other_mon, Plant):
+            if isinstance(obj, Plant):
                 return 100
             else:
                 return 0
         case ENCOUNTER_INPUTS.OTHER_REMAINS:
-            if isinstance(other_mon, Remains):
+            if isinstance(obj, Remains):
                 return 100
             else:
                 return 0
@@ -572,13 +587,13 @@ def make_move(action, mon, other):
         case BASIC_MOVES.REST:
             return rest(mon)
         case BASIC_MOVES.SEARCH_PLANT:
-            return search_plant()
+            return search(mon, Plant, 'not mate')
         case BASIC_MOVES.SEARCH_ANIMAL:
-            return search_animal(mon)
+            return search(mon, Mon, 'not mate')
         case BASIC_MOVES.SEARCH_MATE:
-            return search_mate(mon)
+            return search(mon, Mon, 'mate')
         case BASIC_MOVES.SEARCH_REMAINS:
-            return search_remains()
+            return search(mon, Remains, 'not mate')
 
 
         case ENCOUNTER_MOVES.SPECIAL_ATTACK:
@@ -592,64 +607,55 @@ def make_move(action, mon, other):
   
 
 
-###########Helper functions#########################
+#CLEAN TODO    ##########Helper functions#########################
 
-def get_encstat(stat, mon):
-    lv = 100
-    if isinstance(mon, Mon):
-        lv = mon.level
-        
-    d = calculate_stats(mon, lv, "stats")
+def get_encstat(stat, obj):
+    lv = obj.level
+         
+    d = calculate_stats(obj, lv, "stats")
     if stat == STATS.HP or stat == STATS.CON:
         d[stat] *= 4
     return d[stat]
 
 
-def get_buffs(stat, mon):
-    if mon == None:
-        return 0
-    buff = mon.buffs[stat]
-    return buff
-
-
-def calculate_stats(mon, monlv, flag):
-
-    if mon == None:
-        return {STATS.HP: 0, STATS.CON: 0}
-    elif not isinstance(mon, Mon):
-        monlv = 100
+def calculate_stats(obj, monlv, flag):
 
     lv = monlv / 100
    
-    stat_value = []
+   
     if flag == "stats":
-        d = mon.stats
+        d = obj.stats
 
-    elif flag == "e moves":
-        d = mon.encounter_moves
+    elif flag == "e moves" and isinstance(obj, Mon):
+        d = obj.encounter_moves
+    elif isinstance(obj, Mon):
+        d = obj.basic_moves
     else:
-        d = mon.basic_moves
-    for key in d:
-        stat_value.append(max(1, int(lv * d[key])))
-    return {key: max(1, int(lv * d[key])) for key in d}
+        d = {}
+    dic = {key: max(1, int(lv * d[key])) for key in d}
+    if STATS.CON in dic.keys() and (isinstance(obj, Plant) or isinstance(obj, Remains)):
+        dic[STATS.CON] = 0
+    return dic
 
 
-def calculate_size(mon, monlv):
+def calculate_size(obj, monlv):
     size = 0
     flag = "stats"
-
     for i in range(3):
         if i == 1:
             flag = "e moves"
         elif i == 2:
             flag = ""
-        d = calculate_stats(mon, monlv, flag)
+        d = calculate_stats(obj, monlv, flag)
         size += sum(list(d.values()))
 
-    network = mon.brain['basic']
+    if not isinstance(obj, Mon):
+        return size
+
+    network = obj.brain['basic']
     for i in range(2):
         if i == 1:
-            network = mon.brain['encounter']
+            network = obj.brain['encounter']
         network_section = network.inputs
         for i in range(3):
             if i == 1:
@@ -729,192 +735,120 @@ def compare_species(mon, other_mon):
     return dif
 
 
-#############################BASIC MOVES#######################################
+def get_element(obj):
+    for trait in obj.traits:
+            if isinstance(trait, ELEMENTS):
+                return trait
+    return ELEMENTS.NORMAL
 
+#CLEAN TODO############################BASIC MOVES#######################################
 
-      
-            
+   
 def rest(mon):
     if mon.buffs[STATS.HP] > 0:
-        mon.buffs[STATS.HP] = max(mon.buffs[STATS.HP] - (calculate_size(mon, mon.level) // 8), 1)
+        mon.buffs[STATS.HP] = max(mon.buffs[STATS.HP] - (calculate_size(mon, mon.level) // 8), 0)
     if mon.buffs[STATS.CON] > 0:
-        mon.buffs[STATS.CON] = max(mon.buffs[STATS.CON] - (calculate_size(mon, mon.level) // 8), 1)
-    return None
+        mon.buffs[STATS.CON] = max(mon.buffs[STATS.CON] - (calculate_size(mon, mon.level) // 8), 0)
+    return mon, None
 
 
-def search_plant():
-    global ALL_PLANTS
+def search(mon, cls, flag):
+    global ECO
 
-    for i in range(0, len(ALL_PLANTS)): 
-        i = random.randrange(0, len(ALL_PLANTS))
-        if ALL_PLANTS[i] != None:
-            return ALL_PLANTS[i]
-    return None
+    partner = False
+    if flag == 'mate':
+        partner = True
 
-
-def search_animal(mon):
-    global ALL_MONS
-    for i in range(0, len(ALL_MONS)): 
-        i = random.randrange(0, len(ALL_MONS))
-        if ALL_MONS[i] != mon and ALL_MONS[i] != None:
-            return ALL_MONS[i]
-    return None
-
-
-def search_mate(mon):
-    global ALL_MONS
-    for i in range(len(ALL_MONS)):
-        i = random.randrange(0, len(ALL_MONS))
-        if ALL_MONS[i] != None and compare_species(mon, ALL_MONS[i]) <  50 and ALL_MONS[i] != mon:
-            print("found mon of similar species")
-            return ALL_MONS[i]
-        else:
-            # print("mon is not similar enough to")
-            # print_guy(ALL_MONS[i])
-            pass
-    print("could not find mate")
-    return None
-
-
-def search_remains():
-    global ALL_REMAINS
-    for i in range(len(ALL_REMAINS)):
-        i = random.randrange(0, len(ALL_REMAINS))
-        if ALL_REMAINS[i] != None:
-            return ALL_REMAINS[i]
-    print("could not find remains")
-
-
-def plant_turn(plant):
-    global SPACE_TAKEN
-    global TOTAL_SPACE
-    global ALL_PLANTS
-    if plant.stats[STATS.HP] <= plant.buffs[STATS.HP]:
-        return None
-    regen = plant.stats[STATS.HP] // 8
-
-    if plant.buffs[STATS.HP] > 0:
-        plant.buffs[STATS.HP] -= regen
     
-    if plant.buffs[STATS.HP] < 0:
-        plant.buffs[STATS.HP] = 0
-
-    if SPACE_TAKEN < TOTAL_SPACE:
-        new_plant = spawn_plant(plant)
-        ns = 0
-        for stat in new_plant.stats:
-            ns += new_plant.stats[stat]
-
-        SPACE_TAKEN += ns
-        ALL_PLANTS.append(new_plant)
-    return plant
+    for i in range(len(ECO)):
+        i = random.randrange(0, len(ECO))
+        if isinstance(ECO[i], cls) and (compare_species(mon, ECO[i]) and partner) <  DIST_BETWEEN_SPECIES and ECO[i] is not mon:
+            print(f"found {ECO[i]}")
+            return mon, ECO[i]
+    print("could not find")
+    return mon, None
 
 
-def spawn_plant(parent):
+def spawn_plant(parent: Plant) -> Plant:
     values = []
     buffv = []
     for stat in parent.stats:
-        value = parent.stats[stat]
+        value = parent.stats[stat] + mutate_val()
         buffv.append(0)
-        if random.randrange(0, 100) < 3:
-            value += random.randrange(-1, 2)
         if value < 1:
             value = 1
         values.append(value)
 
     stats = dict(zip(all_stats, values))
-    buffs = dict(zip(all_stats, buffv))
+    buffs = {stat: 0 for stat in all_stats}
 
-    element = parent.traits[0] 
+    element = ELEMENTS.NORMAL
+    for trait in parent.traits:
+        if isinstance(trait, ELEMENTS):
+            element = trait
     if random.randrange(0, 1000) < 3:
         if element != ELEMENTS.NORMAL:
             element = ELEMENTS.NORMAL
         else:
-            element = all_encounter_moves[random.randrange(0, len(all_encounter_moves))]
+            element = all_elements[random.randrange(0, len(all_elements))]
     stats[STATS.CON] = 0
-    return Plant(stats, [element], buffs)
+
+    max_level = parent.max_level + mutate_val()
+    max_age = parent.max_age + mutate_val()
+    
+    return Plant(stats, {element: 50}, buffs, max_age, max_level)
+
+    
 
 
-############################ENCOUNTER MOVES########################################
+#CLEAN TODO###########################ENCOUNTER MOVES########################################
 
-def combat_move(action, mon, other):
+def combat_move(action, mon, obj):
 
-    m_el = ELEMENTS.NORMAL
-    o_el = ELEMENTS.NORMAL
-    for comb in [mon, other]:
-        traits = getattr(comb, 'traits')
-        el = ELEMENTS.NORMAL
-        for trait in traits:
-            if isinstance(trait, ELEMENTS):
-                el = trait
-        if comb == mon:
-            m_el = el
-        else:
-            o_el = el
-
-    mod = 1
-    if m_el.value['element'] in o_el.value['weak']:
+    mon_el, obj_el = get_element(mon), get_element(obj)
+    
+    if mon_el.value['element'] in mon_el.value['weak']:
         mod = 2
-    elif  m_el.value['element'] in o_el.value['strong']:
+    elif  obj_el.value['element'] in obj_el.value['strong']:
         mod = .5
-
-    # change to work with S SA and A
-    hit_points = STATS.HP
-    if action == ENCOUNTER_MOVES.ATTACK:
-        attack = get_encstat(STATS.A, mon)
-        defence = get_encstat(STATS.D, other)
-    elif action == ENCOUNTER_MOVES.SPECIAL_ATTACK:
-        attack = get_encstat(STATS.SA, mon)
-        defence = get_encstat(STATS.SD, other)
     else:
-        hit_points = STATS.CON
-        attack = get_encstat(STATS.S, mon)
-        defence = get_encstat(STATS.S, other)
+        mod = 1
+
+    act_map = {ENCOUNTER_MOVES.ATTACK: (STATS.A, STATS.D, STATS.HP), 
+               ENCOUNTER_MOVES.SPECIAL_ATTACK: (STATS.SA, STATS.SD, STATS.HP), 
+               ENCOUNTER_MOVES.RUN: (STATS.S, STATS.S, STATS.CON)}
+
+    act_a, act_d, hit_points = act_map[action]
+    attack, defence = get_encstat(act_a, mon), get_encstat(act_d, obj)
+   
+    moves = calculate_stats(mon, mon.level, 'e moves')
+    power =  moves[action]
+
+    dmg = min(max((attack * power * mod) // defence, 1), 
+            abs(get_encstat(hit_points, obj) - obj.buffs[hit_points]))
+    obj.buffs[hit_points] += dmg
+    print_dmg(mon, obj, action, hit_points, power, dmg)
+
+    mon = took_bite(mon, obj, hit_points, dmg)        
+    obj = obj_death(obj)
     
-    
-    e_dict = calculate_stats(mon, mon.level, 'e moves')
-    power =  e_dict[action]
+    return mon, obj 
 
-
-    dmg = max((attack * power * mod) // defence, 1)
-    # print(f"mon {action.value}s with a power of {power} for {dmg} points", end=" ")
-    # print(f"Reducing targets {hit_points.value} from {get_encstat(hit_points, other)}:({get_encstat(hit_points, other) - other.buffs[hit_points]}) to", end=" ")
-    other.buffs[hit_points] += dmg
-    # print(get_encstat(hit_points, other) - other.buffs[hit_points])
-
-
-    if not isinstance(other, Mon) and hit_points == STATS.HP:
-        other_hp = get_encstat(hit_points, other) - other.buffs[hit_points]
-
-        if  other_hp < 0:
-            dmg = max(dmg + other_hp, 0)
-        if dmg > 0:
-            mon = took_bite(mon, other, dmg)
-    print(f"{hit_points.value}:{get_encstat(hit_points, other)} ({get_encstat(hit_points, other) - other.buffs[hit_points]})")
-    if (isinstance(other, Plant) or isinstance(other, Remains)) and get_encstat(STATS.HP, other) - other.buffs[STATS.HP] <= 0:
-        other = None
-    if isinstance(other, Mon) and get_encstat(STATS.HP, other) - other.buffs[STATS.HP] <= 0:
-        energy = other.energy + calculate_size(other, other.level)
-        other.stats[STATS.HP] = energy
-        other.buffs[STATS.HP] = 0
-        remains = Remains(other.stats, other.traits, other.buffs)
-        print("died in combat")
-        other = remains
-        
-    return mon, other 
 
 def mate(parent_a, parent_b):
-    if  isinstance(parent_b, Mon) and process_network(parent_b.brain['encounter'], parent_b, parent_a) == ENCOUNTER_MOVES.MATE:
-        print("found mate of same species")
-    elif not isinstance(parent_b, Mon):
+
+    if not isinstance(parent_b, Mon):
         print("tried to mate a non animal")
+        return parent_a, parent_b
+    elif  isinstance(parent_a.child, Mon):
+        print("mon was already carrying a child")
         return parent_a, parent_b
     elif process_network(parent_b.brain['encounter'], parent_b, parent_a) != ENCOUNTER_MOVES.MATE:
         print("other did not consent")
         return parent_a, parent_b
-    if  isinstance(parent_a.child, Mon):
-        print("was already carrying a child")
-        return parent_a, parent_b
+    elif compare_species(parent_a, parent_b) < DIST_BETWEEN_SPECIES:
+        print("offspring not viable")
+    
 
     buff_values = []
     buff_keys = []
@@ -1086,13 +1020,6 @@ def mate(parent_a, parent_b):
                         if len(neuron.axons) > 1:
                             neuron.axons.pop()
                         
-    # add mon to parent and have parent drain more energy over time until enough energy is used to birth the new animal
-    # If I run now we have a change for inf-loop also need to add old age      
-    
-
-    # 
-    # 
-    #  
     new_mon = Mon(stats, buffs, max_level, max_age, traits, e_moves, b_moves, brain)
 
     parent_a.child = new_mon
@@ -1110,168 +1037,121 @@ def mutate_trait(val):
         return True
     return False
 
-def run_encounter(actor, recp):
-    for guy in [actor, recp]:
-        guy.buffs[STATS.CON] = 0
-    print("encounter started")
-    
-    for t in range(10): 
-
-
-        for i in range(2):
-            fin = False
-            if i == 0:
-                a = actor
-                r = recp
-            else:
-                r = actor
-                a = recp
-
-            # print_guy(a)
-            for trait in a.traits:
-                if isinstance(trait, ELEMENTS):
-                    # print(trait.value['element'], end=" ")
-                    pass
-                else:
-                    # print(trait.value, end=" ")
-                    pass
-            #print(a)
-            if isinstance(a, Mon):
-                # print_brain(a.brain)
-                action = process_network(a.brain['encounter'], a, r)
-                print(f"{i} Chose to {action}")
-                a, r = make_move(action, a, r)
-                if r == None:
-                    print("other object is none")
-                    fin = True
-                elif ran_away(r) and action == ENCOUNTER_MOVES.RUN:
-                    print("Ran away")
-                    fin = True
-                elif all_gone(r):
-                    print("other object consumed")
-                    fin = True
-                    r = None
-            if i == 0:
-                actor = a
-                recp = r
-            else:
-                actor = r
-                recp = a
-            if fin:
-                return actor, recp
-            i += 1
-
-    return actor, recp
-
-
 def ran_away(mon):
-    if not isinstance(mon, Mon):
-        return True
-    if get_encstat(STATS.CON, mon) <= mon.buffs[STATS.CON]:
+    if not isinstance(mon, Mon) or get_encstat(STATS.CON, mon) <= mon.buffs[STATS.CON]:
         return True
     return False
 
-def all_gone(prey):
-    if get_encstat(STATS.HP, prey) - prey.buffs[STATS.HP] < 0:
-        return True
-    return False
+def gain_exp(obj, exp):
+    obj.exp += exp
+    if obj.exp > obj.level * 10 and obj.level < obj.max_level:
+        obj.level += 1
+        obj.exp = 0
+    return obj
 
-def gain_exp(mon, exp):
-    mon.exp += exp
-    if mon.exp > mon.level * 10 and mon.level < mon.max_level:
-        mon.level += 1
-        mon.exp = 0
-    return mon
-
-def took_bite(perp, target, dmg):
-    if (isinstance(target, Plant) and TRAITS.HERBAVOR) or (isinstance(target, Remains) and TRAITS.CARNIVOR):
-
-        perp = gain_exp(perp, dmg)
-        #print(f"Mon gained {dmg} energy", end=" ")
-        perp.energy -= dmg
-        if perp.energy < 0:
-            #print("mon couldn't eat any more")
-            perp.energy = 0
+def took_bite(perp, target, hit_points, dmg):
+    if hit_points == STATS.HP and ((isinstance(target, Plant) and TRAITS.HERBAVOR in perp.traits)
+                                    or (isinstance(target, Remains) and TRAITS.CARNIVOR in perp.traits)) :
+        perp = gain_exp(perp, 10)
+        perp.energy = max(perp.energy - dmg, 0)
     return perp
 
+#CLEAN TODO     ##################Process end of turn##################
+
+def obj_death(obj):
+    s = ''
+    if get_encstat(STATS.HP, obj) <= obj.buffs[STATS.HP]:
+        s += 'was attacked'
+    if obj.age >= obj.max_age:
+        if s != '':
+            s += ', it '
+        s += 'was old'
+    if isinstance(obj, Mon) and calculate_size(obj, obj.level) - obj.energy  <= 0:
+        if s != '':
+            s += ', it '
+        s += 'was hungry'
+    if s == '':
+        return obj
+
+    global SPACE_TAKEN
+
+    if isinstance(obj, Plant):
+        SPACE_TAKEN = max(SPACE_TAKEN - calculate_size(obj, obj.level), 0)
+    if not isinstance(obj, Mon):
+        for cls, old, dmg in [(Remains, "corpse rotted away", "the last scraps were eaten"), 
+                              (Plant, "plant grew dry and barren and withered away", "plant was completely consumed")]:
+            if isinstance(obj, cls):
+                if 'was old' in s:
+                    print(old)
+                    return None
+                else:
+                   print(dmg)
+                   return None
+        return None
+    else:
+        print(f"animal died it {s}.")
+        stats = copy.deepcopy(obj.stats)
+        traits = copy.deepcopy(obj.traits)
+        buffs = {key: 0 for key in stats}
+        return Remains(stats, traits, buffs, obj.level)
 
 
-###################Process end of turn##################
-
-def end_turn(mon):
-    global ALL_MONS
-    if not isinstance(mon, Mon):
-        return mon
-    mon.age += 1
-    mon.energy += max(calculate_size(mon, mon.level) // 30, 1)
-
-    if isinstance(mon.child, Mon):
-        mon.energy += max(calculate_size(mon.child, mon.level) // 8, 1)
-        mon.turns_carried += 1
-
-    if mon.energy >= calculate_size(mon, mon.level)  or (mon.age >= mon.max_age and random.randrange(0, 10) == 0):
-        if mon.age > mon.max_age:
-            print("died of old age")
-        else:
-            print("killed by starvation")
-        energy = calculate_size(mon, mon.level)
-        mon.stats[STATS.HP], mon.buffs[STATS.HP] = energy, 0
-        mon = Remains(mon.stats, mon.traits, mon.buffs)
-        return mon
-
-    if isinstance(mon.child, Mon) and mon.turns_carried >= 16:
-        ALL_MONS.append(mon.child)
-        mon.child, mon.turns_carried = None, 0
-    return mon
+def end_turn(obj):
+    if obj == None:
+        return None
+    global ECO
+    obj.age += 1
+    if  isinstance(obj, Mon):
+        obj.energy += max(calculate_size(obj, obj.level) // 30, 1)
+        if isinstance(obj.child, Mon):
+            obj.energy += max(calculate_size(obj.child, 1) // 8, 1)
+            obj.turns_carried += 1
+            if isinstance(obj.child, Mon) and obj.turns_carried >= 16:
+                NEW_OBJs.append(obj.child)
+                obj.child, obj.turns_carried = None, 0
+    obj = obj_death(obj)
+    return obj
 
 
+##CLEAN TODO#################PRINT TO TERM##############################
 
+def print_obj(obj):
+    s = ""
+    s += f"Level: {obj.level}(exp: {obj.exp}) Age:{obj.age} Clade: #TODO\n"
 
-###################PRINT TO TERM##############################
-
-def print_guy(guy):
-    if isinstance(guy, Mon):
-        print_mon(guy)
-    elif isinstance(guy, Plant):
-        print_plant(guy)
-    elif isinstance(guy, Remains):
-        print("oh my god it's a body")
-
-def print_plant(plant):
-    for trait in plant.traits:
-        if isinstance(trait, ELEMENTS):
-            print(str(trait.value['element'] + "type"), end=", ")
-    print("HP " + str(plant.stats[STATS.HP]) + ":(" + str(plant.stats[STATS.HP] - plant.buffs[STATS.HP]) + ") " +
-        "D: " + str(plant.stats[STATS.D]) + " " + "SD: " + str(plant.stats[STATS.SD]))
-    print()
-
-def print_mon(mon):
-    i = 0
-    for trait in mon.traits:
-        if isinstance(trait, ELEMENTS):
-            print(str(trait.value['element'] + "type"), end=", ")
-        else:
-            print(str(trait.value), end=", ")
-    print()
-    for lv in [ mon.level]: # mon.max_level,
-        if i == 0:
-            print("Max Level")
-        else:
-            print("Current Level")
-        mls = calculate_stats(mon, lv, "stats")
-        print(f"Lv: " + str(lv) + " HP " + str(mls[STATS.HP] * 4) + ":(" + str((mls[STATS.HP] * 4) - mon.buffs[STATS.HP]) + ") " +
-              " C " + str(mls[STATS.CON] * 4) + ":(" + str((mls[STATS.CON] * 4) - mon.buffs[STATS.CON]) + ") " +
-              "D: " + str(mls[STATS.D]) + " " + "SD: " + str(mls[STATS.SD]) + " " + "A: " + str(mls[STATS.A]) + " " +
-              "SA: " + str(mls[STATS.SA]) + " " + "S: " + str(mls[STATS.S]) + " E " + str(calculate_size(mon, lv)) + 
-              ":(" + str(calculate_size(mon, lv) - mon.energy) + f") Age:{mon.max_age}({mon.age}) Carrying {mon.child} due:(16) {mon.turns_carried}")
+    for trait in obj.traits:
         
+        if isinstance(trait, ELEMENTS):
+            s += f"type {trait.value['element']}"
+        else:
+            s += f"{trait.value}"
+        s += f": {obj.traits[trait]}, "
+    s += "\n"
 
-        d = calculate_stats(mon, lv, "e moves") | calculate_stats(mon, lv, "")
-        for key in d:
-            print("(" + str(key.value) + " P: " + str(d[key]) + ")", end=" ")
-        print()
-        i += 1
-    print()
+    print(obj.stats)
+    for stat in obj.stats:
+        s += f"{stat.value}: "
+        if stat == STATS.HP:
+            hp = get_encstat(STATS.HP, obj)
+            s += f"({hp}){hp - obj.buffs[STATS.HP]} "
+        else:
+            s += f"{get_encstat(stat, obj)} "
+    s += "\n"
+
+    if isinstance(obj, Mon):
+        s += f"Energy: {calculate_size(obj, obj.level)}({calculate_size(obj, obj.level) - obj.energy})"
+        for moves in [obj.basic_moves, obj.encounter_moves]:
+            for move in moves:
+                s += f"{move.value}: "
+                s += f"{moves[move]} "
+                
+
+        if obj.child != None:
+            s += f"Child: {obj.child} carried: {obj.turns_carried}"
+        s += "\n"
+
+    print(s)
+
 
 def print_brain(brain):
     print(brain)
@@ -1286,4 +1166,51 @@ def print_brain(brain):
                 print(neuron.afunction.value)
                 print(neuron.bias)
 
+
+def print_dmg(mon, obj, action, hit_points, power, dmg):
+    print(f"{mon}: ", end='')
+    print(f"mon {action.value}s with a power of {power} for {dmg} points", end=" ")
+    print(f"Reducing target:{obj} {hit_points.value} to {get_encstat(hit_points, obj)}:({get_encstat(hit_points, obj) - obj.buffs[hit_points]}) ")
+
+
+
+
+################# DEBUG ###################
+def debug_memory_usage():
+    """Track memory usage patterns using built-in tools only"""
+    print("\n=== MEMORY USAGE DEBUG ===")
+    
+    # Python object counts
+    all_objects = gc.get_objects()
+    print(f"Total Python objects: {len(all_objects)}")
+    
+    # Count objects by type
+    type_counts = {}
+    total_size = 0
+    
+    for obj in all_objects:
+        obj_type = type(obj).__name__
+        type_counts[obj_type] = type_counts.get(obj_type, 0) + 1
+        total_size += sys.getsizeof(obj)
+    
+    print(f"Approximate total size: {total_size / 1024 / 1024:.2f} MB")
+    
+    # Show counts for our custom objects
+    custom_objects = ['Mon', 'Plant', 'Remains', 'Neuron', 'Neural_Network']
+    print("Custom object counts:")
+    for obj_type in custom_objects:
+        count = type_counts.get(obj_type, 0)
+        if count > 0:
+            print(f"  {obj_type}: {count}")
+    
+    # Show top object types by count
+    sorted_types = sorted(type_counts.items(), key=lambda x: x[1], reverse=True)
+    print("Top 10 object types by count:")
+    for obj_type, count in sorted_types[:10]:
+        print(f"  {obj_type}: {count}")
+
+
+
 main()
+
+## NEW plan is to shrik and simplify
