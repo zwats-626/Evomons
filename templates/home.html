@@ -1,0 +1,151 @@
+{% extends "index.html" %}
+
+{% block title %}Mon Sim - Evolution Simulator{% endblock %}
+
+{% block main %}
+<div class="container my-5">
+    <div class="jumbotron">
+        <h1 class="display-4">Mon Sim: Evolution Simulator</h1>
+        <p class="lead">An artificial life simulation featuring creatures with evolving neural networks, competing for survival in a dynamic ecosystem.</p>
+        <hr class="my-4">
+        <div class="row">
+            <div class="col">
+                <div class="btn-group" role="group">
+                    <a class="btn btn-primary btn-lg" href="/inspector" role="button">Inspector</a>
+                    <a class="btn btn-secondary btn-lg" href="/organizer" role="button">Graphs</a>
+                </div>
+            </div>
+            <div class="col">
+                <div class="d-flex justify-content-end">
+                    <div class="btn-group" role="group">
+                        <a class="btn btn-secondary btn-lg" id="restart" role="button">Restart Sim</a>
+                        <a class="btn btn-primary btn-lg" id="continue" role="button">Continue Sim</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-5">
+        <div class="col-md-4">
+            <h3>Neural Networks</h3>
+            <p>Each creature has an evolving neural network that controls decision-making for foraging, reproduction, and combat.</p>
+        </div>
+        <div class="col-md-4">
+            <h3>Dynamic Ecosystem</h3>
+            <p>Plants, herbivores, and carnivores interact in a balanced ecosystem with limited resources.</p>
+        </div>
+        <div class="col-md-4">
+            <h3>Data Visualization</h3>
+            <p>Track population dynamics and biomass over time with interactive graphs.</p>
+        </div>
+    </div>
+
+    <div class="card mt-5">
+        <div class="card-body">
+            <h3>Features</h3>
+            <ul>
+                <li>Genetic inheritance with mutation</li>
+                <li>Neural network visualization</li>
+                <li>Multi-trait evolution (stats, moves, behaviors)</li>
+                <li>Elemental type system</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    document.getElementById("restart").addEventListener('click', () =>{
+        create_form("restart");
+    })
+
+    document.getElementById("continue").addEventListener('click', () =>{
+        create_form("continue")
+    })
+
+    function create_form(param){
+        
+        
+        if (document.getElementById('delete-me')) return;
+
+        const jumbo = document.getElementsByClassName("jumbotron")[0];
+        const parent = document.createElement("div")
+        parent.className = "mt-4";
+        parent.id = "delete-me";
+        jumbo.appendChild(parent);
+
+        const form = document.createElement("form");
+        form.action = "/";
+        form.method = "get";
+        form.className = "border rounded p-4 bg-light";
+        parent.appendChild(form);
+
+        const ste_container = document.createElement("div");
+        ste_container.className = "form-continue";
+        form.appendChild(ste_container);
+
+        const input_elements = [
+            {name: "steps", text: "Number of steps to simulate"},
+            {name: "steps_length", text: "Number of turns in a step (a step is a recorded turn that is put into the database)"}
+            
+            
+        ]
+        console.log(param)
+        let input_amt = param === "continue" ? 1: 2;
+        console.log(input_amt)
+        for(let i = 0; i < input_amt; i++){
+            let in_name = input_elements[i].name;
+            let un_text = input_elements[i].text;
+
+            const wrapper = document.createElement("div");
+            wrapper.className = "form-field mb-3";
+            ste_container.appendChild(wrapper);
+
+            const label = document.createElement('label');
+            label.htmlFor = in_name;
+            label.textContent = un_text;
+            label.className = "form-label";
+            wrapper.appendChild(label);
+
+            const input = document.createElement('input');
+            input.type = "number";
+            input.name = in_name;
+            input.id = in_name;
+            input.className = "form-control";
+            input.required = true;
+            input.min = 1
+            input.max = 1000
+            wrapper.appendChild(input);
+        }
+        
+        const sub_container = document.createElement('div');
+        sub_container.className = "mt-3 text-end";
+        form.appendChild(sub_container);
+
+        const sub = document.createElement('input');
+        sub.type = "submit";
+        sub.value = param === "restart" ? "Restart" : "Continue";
+        sub.className = "btn btn-primary";
+        sub_container.appendChild(sub);
+    }
+</script>
+
+<style>
+    .form-field {
+        display: flex;
+        flex-direction: column;
+        max-width: 100%;
+    }
+
+    .form-field label {
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        word-wrap: break-word;
+    }
+
+    .form-field input[type="number"] {
+        max-width: 200px;
+    }
+</style>
+{% endblock %}
