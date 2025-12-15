@@ -24,30 +24,5 @@
 
     <script src="{{ url_for('static', filename='js/organizer.js') }}"></script>
 
-    <style>
-    body {
-        padding-top: 60px;
-    }
-
-    aside {
-        position: fixed;
-        top: 60px;         
-        bottom: 0;
-        left: 0;
-        width: 240px;
-        overflow-y: auto;
-        background-color: #212529;
-        color: white;
-        padding: 20px;
-        border-right: 1px solid #444;
-        z-index: 100;      
-    }
-
-    main {
-        margin-left: 240px; 
-        padding: 20px;
-        min-height: calc(100vh - 60px); 
-    }
-</style>
 
 {% endblock %}

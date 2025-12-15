@@ -1,19 +1,67 @@
+    body {
+        padding-top: 60px;
+    }
+
 aside {
-    width: 250px;
-    height: 100vh;              
-    overflow-y: auto;           
-    background: #f0f0f0;
-    border-right: 1px solid #ccc;
+    position: fixed;
+    top: 60px;         
+    bottom: 0;
+    left: 0;
+    width: 240px;
+    overflow-y: auto;
+    background-color: #212529;
+    color: white;
+    padding: 20px;
+    border-right: 1px solid #444;
+    z-index: 100;      
+}
+
+aside .btn {
+    margin-bottom: 5px;
+    width: 100%;
+    text-align: left;
+}
+
+
+main {
+    margin-left: 240px; 
+    padding: 20px;
+    min-height: calc(100vh - 60px); 
 }
 
 td {
     border: 2px solid black;
     padding: 16px;
 }
+/* Ensure tables are responsive */
+table {
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+table td, table th {
+    padding: 8px;
+    border: 1px solid #ddd;
+}
 
 canvas {
-    border: 1px solid black;
+    display: block;
+    margin: 20px 0;
 }
 
 
+.form-field {
+    display: flex;
+    flex-direction: column;
+    max-width: 100%;
+}
 
+.form-field label {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    word-wrap: break-word;
+}
+
+.form-field input[type="number"] {
+    max-width: 200px;
+}
