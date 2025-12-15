@@ -1,0 +1,235 @@
+
+function addDrpDwn(){
+    
+    const container = document.getElementById('input-displays')
+    const all_rows = container.querySelectorAll('div.row');
+    let num = all_rows.length;
+    
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.id = `display-group${num}`;
+    row.style = 'padding: 5px'
+    container.appendChild(row)
+
+    const inp_grp = document.createElement('div');
+    inp_grp.className = 'input-group mb-3 dropdown';
+    inp_grp.theme = "light"
+    row.appendChild(inp_grp);
+
+    
+    const dropdowns = [
+        {content: "color", options: ['blue', 'indigo', 'purple', 'pink', 'red', 'orange', 'yellow', 'green', 'teal', 'cyan', 'gray', 'black']},
+        {content: "Sample Group", options: ['Mon', 'Plant', 'Remains']},
+        {content: "Data Type", options: ['Population', 'Biomass']}
+
+    ];
+    
+    for (let i = 0; i < 3; i++){
+
+        const text = document.createElement('label');
+        text.className = 'input-group-text';
+        text.htmlFor = `Group${num}-${dropdowns[i].content}`;
+        text.textContent = `${dropdowns[i].content}`;
+        inp_grp.appendChild(text);
+
+
+        const select = document.createElement('select');
+        select.className = 'form-select'
+        select.id = `Group${num}-${dropdowns[i].content}`;
+        inp_grp.appendChild(select);
+        select.addEventListener('change', () =>{
+            if (i == 0){
+                text.style.backgroundColor = select.value;
+            }
+            let all_flags = []
+            all_r = container.querySelectorAll('div.row');
+            for (let j = 0; j < all_r.length; j++){
+                const r = all_r[j];
+                const all_selects = r.querySelectorAll('select');
+                let flags = [];
+                for(let k = 0; k < all_selects.length; k++){
+                    if (all_selects[k].value !== "Chose..." || all_selects[k].value === ""){
+                        flags.push(all_selects[k].value);
+                    }
+                }
+                if(flags.length === 3){
+                    all_flags.push(flags);
+                }
+            }
+            draw_graph(all_flags);
+        })
+        
+        
+        const choose = document.createElement('option');
+        choose.selected = true;
+        choose.textContent = "Chose... "
+        select.appendChild(choose);
+
+        for (let j = 0; j < dropdowns[i].options.length; j++){
+            const opt = document.createElement('option');
+            opt.value = dropdowns[i].options[j];
+            opt.textContent = dropdowns[i].options[j];
+            select.append(opt);
+        }
+    }
+}
+
+document.getElementById("add-btn").addEventListener('click', () => {
+    addDrpDwn();
+})
+
+document.getElementById('sub-btn').addEventListener('click', () => {
+    const container = document.getElementById('input-displays');
+    const all_rows = container.querySelectorAll('div.row');
+    all_rows[all_rows.length - 1].remove();
+})
+
+async function main(){
+    addDrpDwn();
+    await draw_graph([]);
+}
+
+async function draw_graph(sel_arry){
+    let data_set = [];
+    for (let i =0; i < sel_arry.length; i++){
+        if (sel_arry[i].length === 3){
+            data_set.push(await call_data(sel_arry[i]));
+        }
+    }
+    if (data_set.length === 0){
+        data_set.push(await call_data());
+    }
+
+    let mc = 0;
+    let max_data_set = data_set[0];
+    for (let i = 0; i < data_set.length; i++){
+        if (data_set[i].max_cord > mc){
+            mc = data_set[i].max_cord;
+            max_data_set = data_set[i]; 
+        }
+    }
+
+    var turn_count = 10;
+    var turn_step = 1;
+    const canvas = document.getElementById("graph-display");
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, 1000, 1000);
+
+    const axes = [
+        [100, 100, 100, 900],
+        [100, 900, 900, 900]
+    ];
+    // graph outline 
+    for (var [x1, y1, x2, y2] of axes){
+        ctx.beginPath();          
+        ctx.moveTo(x1, y1);      
+        ctx.lineTo(x2, y2);     
+        ctx.strokeStyle = 'black'
+        ctx.stroke();   
+    }
+    //x axis ordinate
+    ctx.save();
+    ctx.fillStyle = "black";            
+    ctx.font = "18px Arial";            
+    ctx.textAlign = "center";           
+    ctx.textBaseline = "middle"; 
+    ctx.translate(500, 950);
+    ctx.fillText("Turns", 0, 0);
+    ctx.restore();
+
+    //y axis ordinates
+    var x = 100;
+    var y = 25;
+    for (var i = 0; i < data_set.length; i++){
+        const text = data_set[i].ordinate;
+        ctx.save();
+        ctx.fillStyle = data_set[i].color;            
+        ctx.font = "18px Arial";            
+        ctx.textAlign = "left";           
+        ctx.textBaseline = "middle";
+        const lng_px = ctx.measureText(text).width;
+        if(lng_px + x + 10 > 900){
+            console.log("okay okay");
+            y += 25;
+            x = 100;
+        }
+        ctx.translate(x, y);
+        ctx.fillText(text, 0, 0);
+        x += lng_px + 10
+        ctx.restore();
+    }
+
+
+    var h = max_data_set.max_cord;
+
+    var w = max_data_set.graph_data.length;
+
+    var ranges = [h, w];
+    for (var i = 0; i < 2; i++){
+        if (ranges[i] % 10 == 0){
+        }
+        else{
+            ranges[i] += (10 - ranges[i] % 10);
+        }
+        var y = 900;
+        var x = 75;
+        var scale_inc = ranges[i] / 10;
+        if (i == 1){
+            y = 925;
+            x = 100;
+        }
+        var v = 0;
+        for (var j = 0; j < 11; j++){
+            ctx.fillStyle = "black";            
+            ctx.font = "10 Arial";            
+            ctx.textAlign = "center";           
+            ctx.textBaseline = "middle";        
+            ctx.fillText(String(v), x, y);
+            if (i == 0){
+                y -=  80; 
+            }
+            else{
+                x += 80;
+            }
+            v += scale_inc;
+            
+        }
+    }
+
+    for (var k = 0; k < data_set.length; k++){
+        x1 = 100;
+        y1 = 900;
+        const graph_data = data_set[k].graph_data
+        for (var i = 0; i < graph_data.length; i++){
+            console.log("ranges:", ranges)
+            var y_px = graph_data[i] / ranges[0] * 800;
+            console.log("pixel:" ,y_px);
+            console.log("int val:", graph_data[i])
+            y2 = 900 - y_px;
+
+            var x_px = (i / ranges[1] * 800) + 100 + (1 / ranges[1] * 800);
+            x2 = x_px;
+
+            console.log(y_px);
+            ctx.beginPath();          
+            ctx.moveTo(x1, y1);     
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = data_set[k].color;     
+            ctx.stroke(); 
+            x1 = x2;
+            y1 = y2;
+        }
+    }
+}
+
+async function call_data(flags = ['#0d6efd', "Mon", "Population"]) {
+    console.log(flags);
+    const params = new URLSearchParams();
+    flags.forEach(flag => params.append("target", flag));
+    const response = await fetch(`/api/graph?${params.toString()}`);
+    const data = await response.json();
+    console.log("Graph data:", data);
+    return data;
+    
+}
+window.onload = () => main();

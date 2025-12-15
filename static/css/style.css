@@ -1,0 +1,19 @@
+aside {
+    width: 250px;
+    height: 100vh;              
+    overflow-y: auto;           
+    background: #f0f0f0;
+    border-right: 1px solid #ccc;
+}
+
+td {
+    border: 2px solid black;
+    padding: 16px;
+}
+
+canvas {
+    border: 1px solid black;
+}
+
+
+
