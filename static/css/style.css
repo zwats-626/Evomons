@@ -1,6 +1,6 @@
-    body {
-        padding-top: 60px;
-    }
+body {
+    padding-top: 60px;
+}
 
 aside {
     position: fixed;
@@ -8,6 +8,7 @@ aside {
     bottom: 0;
     left: 0;
     width: 240px;
+    height: calc(100% - 60px);
     overflow-y: auto;
     background-color: #212529;
     color: white;

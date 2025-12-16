@@ -1,64 +1,44 @@
 from .classes import *
+from typing import List
 import random
 from . import sim_h as h
 
-def process_network(network, mon, other_mon): 
-    for neuron in network.inputs + network.hiddens + network.outputs:
-        neuron.output = 0
-        neuron.input_value = 0
+
+def process_network(network: Neural_Network, attacker: Mon, defender: Obj): 
+    _validate(network, attacker, defender)
+    _reset_neurons(network)
+    _set_inputs(network.inputs, attacker, defender)
+    _prop_layers(network)
+    return _chose_act(network)
 
 
-    for neuron in network.inputs:
-        neuron.input_value = get_input(neuron.action, mon, other_mon)
-        # print(f"Neuron input {neuron.action} {neuron.input_value}")
-    for section in [network.inputs, network.hiddens, network.outputs]:
-        next_sec = network.hiddens
-        if section == network.hiddens:
-            next_sec = network.outputs
-        elif section == network.outputs:
-            next_sec = None
+def _validate(network: Neural_Network, attacker: Mon, defender: Obj) -> None:
+    """Validate all inputs as valid and present"""
+    if not all([network, attacker, defender]):
+        raise ValueError("network, attacker, and defender are requiered")
+    if not isinstance(network, Neural_Network):
+        raise TypeError("network must be of type Neural_Network")
+    if not isinstance(attacker, Mon):
+        raise TypeError("attacker must be of type Mon")
+    if not isinstance(defender, Mon):
+        raise TypeError("defender must be of type Obj")    
+    req_attrs = ['inputs', 'hiddens', 'outputs']
+    if not all(hasattr(network, attr) for attr in req_attrs):
+        raise ValueError(f"network must have {req_attrs}")
         
-        for neuron in section:
-            if neuron.input_value >= neuron.threshold:
-                out = get_neuron_function(neuron.input_value, neuron.bias, neuron.afunction)
-            else:
-                out = 0
-            # print(f"Neuron out {neuron.action} {out} ")
-            for axon in neuron.axons:
-                # print(f"Neuron axon:{axon}")
-                if  next_sec != None and axon < len(next_sec):
-                    
-                    next_sec[axon].input_value += int(out)
-                    
-                if next_sec == None:
-                    neuron.output = int(out)
-    if len(network.outputs) < 1:
-        return None
-    highest = network.outputs[0]
-    for neuron in network.outputs:
-        # print(f"Neuron: {neuron.action} ({neuron.output})")
-        if neuron.output > highest.output:
-            highest = neuron
-    return highest.action
 
-def get_neuron_function(input, bias, func):
+def _reset_neurons(network: Neural_Network) -> None:
+    neurons = network.inputs + network.hiddens + network.outputs
+    for neuron in neurons:
+        neuron.output, neuron.input_value = 0, 0
     
-    match func:
-        case NEURON_FUNCTIONS.MULT:
-            return ((input * -1) + bias) # was *
-        case NEURON_FUNCTIONS.ADD:
-            return (input + bias)
-        case NEURON_FUNCTIONS.DIVIDE:
-            if bias == 0:
-                bias = 1
-            return (input - bias) # was /
-        case NEURON_FUNCTIONS.SUBTRACT:
-            return (input - bias)
-        case _:
-            # print("failed path to neuron function")
-            return 0
 
-def get_input(request, mon, obj):
+def _set_inputs(inputs: Enum, attacker: Mon, defender: Obj) -> None:
+    for neuron in inputs:
+        neuron.input_value = _get_input(neuron.action, attacker, defender)
+
+
+def _get_input(request: Enum, mon: Mon, obj: Obj) -> float:
     from .sim import DIST_BETWEEN_SPECIES
     match request:
         case BASIC_INPUTS.RANDOM:
@@ -95,7 +75,6 @@ def get_input(request, mon, obj):
             return mon.level
         case ENCOUNTER_INPUTS.OTHER_HP:
             return h.get_encstat(STATS.HP, obj)
-
         case ENCOUNTER_INPUTS.OTHER_ENERGY:
             return h.calculate_size(obj, obj.level)
         case ENCOUNTER_INPUTS.OTHER_ATTACK:
@@ -111,10 +90,7 @@ def get_input(request, mon, obj):
         case ENCOUNTER_INPUTS.OTHER_HPB:
             return mon.buffs[STATS.HP]
         case ENCOUNTER_INPUTS.OTHER_ENERGYB:
-            if not isinstance(obj, Mon):
-                return 0
-            else:
-                return obj.energy
+            return 0 if not isinstance(obj, Mon) else obj.energy
         case ENCOUNTER_INPUTS.OTHER_ATTACKB:
             return mon.buffs[STATS.A]
         case ENCOUNTER_INPUTS.OTHER_SAB:
@@ -126,34 +102,60 @@ def get_input(request, mon, obj):
         case ENCOUNTER_INPUTS.OTHER_SPEEDB:
             return mon.buffs[STATS.S]
         case ENCOUNTER_INPUTS.OTHER_LEVEL:
-            if isinstance(obj, Mon):
-                return obj.level
-            return 0
+            return obj.level if isinstance(obj, Mon) else 0
         case ENCOUNTER_INPUTS.SIMILAR_SPECIES:
-            if isinstance(obj, Mon) and h.compare_species(mon, obj) < DIST_BETWEEN_SPECIES:
-                return 100
-            else:
-                return 0
+            return 100 if isinstance(obj, Mon) and h.compare_species(mon, obj) < DIST_BETWEEN_SPECIES else 0
         case ENCOUNTER_INPUTS.DIF_SPECIES:
-            if not isinstance(obj, Mon) or h.compare_species(mon, obj) > DIST_BETWEEN_SPECIES:
-                return 100
-            else:
-                return 0
+            return 100 if not isinstance(obj, Mon) or h.compare_species(mon, obj) > DIST_BETWEEN_SPECIES else 0
         case ENCOUNTER_INPUTS.OTHER_ANIMAL:
-            if isinstance(obj, Mon):
-                return 100
-            else:
-                return 0
+            return 100 if isinstance(obj, Mon) else 0
         case ENCOUNTER_INPUTS.OTHER_PLANT:
-            if isinstance(obj, Plant):
-                return 100
-            else:
-                return 0
+            return 100 if isinstance(obj, Plant) else 0
         case ENCOUNTER_INPUTS.OTHER_REMAINS:
-            if isinstance(obj, Remains):
-                return 100
-            else:
-                return 0
+            return 100 if isinstance(obj, Remains) else 0
         case _:
-            # print("neuron input request/path not found")
             return 0
+        
+
+def _prop_layers(network: Neural_Network) -> None:
+    layer_pairs = [(network.inputs, network.hiddens), (network.hiddens, network.outputs), (network.outputs, None)]
+    for section, next_section in layer_pairs:
+        for neuron in section:
+            _cal_output(neuron)
+            _prop_outputs(neuron, next_section)
+
+
+def _cal_output(neuron: Neuron) -> None:
+    if neuron.input_value >= neuron.threshold:
+        neuron.output = _get_neuron_function(neuron.input_value, neuron.bias, neuron.afunction)
+        neuron.output = 0
+
+
+def _get_neuron_function(input, bias, func) -> float:    
+    match func:
+        case NEURON_FUNCTIONS.MULT:
+            return ((input * -1) + bias)
+        case NEURON_FUNCTIONS.ADD:
+            return (input + bias)
+        case NEURON_FUNCTIONS.DIVIDE:
+            return (input / bias) if bias is not 0 else 0 
+        case NEURON_FUNCTIONS.SUBTRACT:
+            return (input - bias)
+        case _:
+            return 0
+
+
+def _prop_outputs(neuron: Neuron, next_layer: List[Neuron]) -> None:
+    if next_layer is None:
+        return
+    for axon in neuron.axons:
+        if axon <= len(next_layer):
+            next_layer[axon] += neuron.output 
+
+
+def _chose_act(outputs: List[Neuron]) -> Enum:
+    if not outputs:
+        return None
+    choice = max(outputs, key=lambda n: n.output)
+    return choice
+
